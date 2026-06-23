@@ -4,6 +4,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import CustomerDashboard from './pages/CustomerDashboard';
 import Validate from './pages/Validate';
 import Providers from './pages/Providers';
+import Customers from './pages/Customers';
 import Login from './pages/Login';
 import { useAuth } from './lib/auth';
 
@@ -23,6 +24,7 @@ function Sidebar({ theme, toggle }: { theme: string; toggle: () => void }) {
       <div className="group">Admin</div>
       <nav className="nav">
         <NavLink to="/admin" className={link}>⚙ Overview</NavLink>
+        <NavLink to="/admin/customers" className={link}>☰ Customers</NavLink>
         <NavLink to="/admin/providers" className={link}>⊞ Detection providers</NavLink>
       </nav>
       <div style={{ position: 'absolute', bottom: 14, left: 14, right: 14 }}>
@@ -73,6 +75,7 @@ export default function App() {
           <Route path="/dashboard" element={<CustomerDashboard />} />
           <Route path="/validate" element={<Validate />} />
           <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
+          <Route path="/admin/customers" element={<Protected><Customers /></Protected>} />
           <Route path="/admin/providers" element={<Protected><Providers /></Protected>} />
         </Routes>
       </main>

@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
+import { api, type JobRow, type MyStats } from '../lib/api';
 
-const jobs = [
-  { name: 'india_leads.csv', recs: '240,000 records', state: 'ok', label: 'Completed' },
-  { name: 'uae_batch.xlsx', recs: '88,000 records · 64%', state: 'run', label: 'Running' },
-  { name: 'us_misc.txt', recs: '12,400 records', state: 'warn', label: 'Resumable' },
-] as const;
+const compact = (n: number) =>
+  n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
+const num = (v: number | string) => Number(v);
 
 export default function CustomerDashboard() {
   const [balance, setBalance] = useState<number | null>(null);
+  const [jobs, setJobs] = useState<JobRow[]>([]);
+  const [stats, setStats] = useState<MyStats | null>(null);
+
   useEffect(() => {
-    api.balance().then((w) => setBalance(w.balance)).catch(() => setBalance(512400));
+    api.balance().then((w) => setBalance(w.balance)).catch(() => {});
+    api.history().then((j) => setJobs(j.slice(0, 5))).catch(() => {});
+    api.myStats().then(setStats).catch(() => {});
   }, []);
 
   return (
@@ -29,23 +32,35 @@ export default function CustomerDashboard() {
             <div style={{ fontSize: 30, fontWeight: 600, margin: '2px 0' }}>
               {balance === null ? '—' : balance.toLocaleString()} <span style={{ fontSize: 14, opacity: 0.85 }}>credits</span>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.85 }}>auto-deduct enabled</div>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>
+              {balance === null ? '' : `≈ $${Math.round(balance * 0.0025).toLocaleString()} · auto-deduct enabled`}
+            </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
               <span style={{ background: 'rgba(255,255,255,.18)', borderRadius: 8, padding: '7px 14px', fontSize: 13 }}>＋ Recharge</span>
               <span style={{ background: 'rgba(255,255,255,.18)', borderRadius: 8, padding: '7px 14px', fontSize: 13 }}>🧾 Invoices</span>
             </div>
           </div>
+
           <div className="card">
             <h3>Recent jobs</h3>
-            {jobs.map((j) => (
-              <div key={j.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-                <div>
-                  <div style={{ fontSize: 13 }}>{j.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{j.recs}</div>
+            {jobs.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-3)' }}>No jobs yet — run one from Validate.</div>}
+            {jobs.map((j) => {
+              const total = num(j.total_records);
+              const valid = num(j.valid_count);
+              const rate = total ? Math.round((valid / total) * 100) : 0;
+              return (
+                <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderTop: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontSize: 13, textTransform: 'capitalize' }}>{j.service} · {j.country ?? '—'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{total.toLocaleString()} records · {new Date(j.created_at).toLocaleDateString()}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span className="pill ok">{j.status}</span>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>{rate}% valid</div>
+                  </div>
                 </div>
-                <span className={`pill ${j.state}`}>{j.label}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -64,11 +79,13 @@ export default function CustomerDashboard() {
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 8, textAlign: 'center' }}>⏱ Awaiting 1/12 confirmations</div>
           </div>
+
           <div className="metric">
             <div className="label">Usage this month</div>
-            <div className="value">3.18M</div>
-            <div className="bar-track" style={{ marginTop: 8 }}><div className="bar-fill" style={{ width: '62%' }} /></div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>62% of monthly average</div>
+            <div className="value">{stats ? compact(stats.numbersThisMonth) : '—'}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>
+              {stats ? `${stats.jobs} jobs · ${stats.successRate}% valid · ${stats.creditsSpent.toLocaleString()} credits` : ''}
+            </div>
           </div>
         </div>
       </div>

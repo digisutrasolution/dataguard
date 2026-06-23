@@ -91,6 +91,49 @@ export interface AuthUser {
   twofaEnabled: boolean;
 }
 
+export interface AdminStats {
+  customers: number;
+  activeUsers: number;
+  creditsSold: number;
+  revenueUsd: number;
+  numbersValidated: number;
+  jobs: number;
+  successRate: number;
+  dailyUsage: { d: string; n: number }[];
+  monthlyRevenue: { m: string; usd: number }[];
+  topCountries: { country: string; n: number }[];
+  servicePerformance: { service: string; jobs: number; n: number }[];
+}
+
+export interface CustomerRow {
+  id: string;
+  company: string;
+  balance: number;
+  numbers: number;
+  spent: number;
+  jobs: number;
+  lastActivity: string | null;
+}
+
+export interface MyStats {
+  numbersThisMonth: number;
+  successRate: number;
+  creditsSpent: number;
+  jobs: number;
+}
+
+export interface JobRow {
+  id: string;
+  service: string;
+  total_records: number | string;
+  valid_count: number | string;
+  invalid_count: number | string;
+  dup_count: number | string;
+  status: string;
+  created_at: string;
+  country?: string;
+}
+
 export type ProviderType = 'mock' | 'http' | 'apify';
 
 export interface ProviderConfig {
@@ -112,6 +155,13 @@ export const api = {
   generate: (country: string, quantity: number, format: string) =>
     post<{ count: number; numbers: string[] }>('/generate', { country, quantity, format }),
   balance: () => get<{ customerId: string; balance: number }>('/balance'),
+  history: () => get<JobRow[]>('/history'),
+  myStats: () => get<MyStats>('/my/stats'),
+
+  admin: {
+    stats: () => get<AdminStats>('/admin/stats'),
+    customers: () => get<CustomerRow[]>('/admin/customers'),
+  },
 
   auth: {
     login: (email: string, password: string, totp?: string) =>

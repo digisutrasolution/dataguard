@@ -32,6 +32,7 @@ import {
 } from './modules/auth/service.js';
 import { requireAuth, requirePermission } from './modules/auth/middleware.js';
 import { recordJob, listJobs } from './modules/jobs/jobs.js';
+import { adminStats, adminCustomers, customerStats } from './modules/reports/stats.js';
 import { initDb, dbActive } from './db/pool.js';
 
 const app = express();
@@ -212,6 +213,11 @@ app.post('/api/detect-bulk', async (req, res) => {
   });
 });
 
+// ---- Admin: reports & analytics (JWT + RBAC) -----------------------------
+const canReport = [requireAuth, requirePermission('reports.view')];
+app.get('/api/admin/stats', ...canReport, async (_req, res) => res.json(await adminStats()));
+app.get('/api/admin/customers', ...canReport, async (_req, res) => res.json(await adminCustomers()));
+
 // ---- Admin: detection provider management (JWT + RBAC) -------------------
 const canManage = [requireAuth, requirePermission('detection.manage')];
 
@@ -282,6 +288,9 @@ app.post('/api/recharge', async (req, res) => {
 
 // GET /api/history — recent validation jobs for the customer
 app.get('/api/history', async (_req, res) => res.json(await listJobs(CUSTOMER)));
+
+// GET /api/my/stats — customer dashboard aggregates (this month)
+app.get('/api/my/stats', async (_req, res) => res.json(await customerStats(CUSTOMER)));
 
 // Connect to Postgres (if configured) before accepting traffic.
 initDb().then((ok) => {
