@@ -29,8 +29,19 @@ dataguard/
 ```
 
 ## Run (Windows PowerShell 5.1 — IMPORTANT)
-This shell does **not** support `&&`. Use `;` or separate lines. Two terminals
-(both servers are long-running):
+This shell does **not** support `&&`. Use `;` or separate lines.
+
+**Preferred — one command from the repo root** (runs both via concurrently):
+```powershell
+npm run dev    # [api] :4000 + [web] :5173 together
+```
+Both servers are required together. Running ONLY the frontend → every `/api/*`
+call hits a dead backend and the terminal floods with Vite proxy ECONNREFUSED
+errors (common support question). The root `npm run dev` prevents this. The
+vite proxy also returns a clean 502 `{error:"backend_unavailable"}` if the API
+is down rather than hanging.
+
+Separate terminals if needed:
 ```powershell
 cd "D:\Claude Dev\dataguard\backend"; npm run dev     # :4000
 cd "D:\Claude Dev\dataguard\frontend"; npm run dev    # :5173  ← open this

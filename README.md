@@ -28,20 +28,22 @@ dataguard/
 
 ## Run it
 
-**Backend** (port 4000):
+**One command (recommended)** — starts backend + frontend together:
 ```bash
-cd backend
-npm install
-npm run dev
+npm run setup    # first time only: installs root + backend + frontend deps
+npm run dev      # runs API (:4000) and web (:5173) concurrently
 ```
+> ⚠️ The frontend needs the backend running. If you start **only** the frontend,
+> every `/api/*` call fails and the terminal fills with proxy errors. Use
+> `npm run dev` from the project root so both always run.
 
-**Frontend** (port 5173, proxies `/api` → 4000):
-```bash
-cd frontend
-npm install
-npm run dev
-```
 Open http://localhost:5173 → Dashboard, Validate, Admin.
+
+**Or run them separately** (two terminals — PowerShell uses `;`, not `&&`):
+```powershell
+cd backend ; npm run dev      # :4000
+cd frontend ; npm run dev     # :5173, proxies /api → 4000
+```
 
 **Try the API directly:**
 ```bash
