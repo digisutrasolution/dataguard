@@ -65,7 +65,7 @@ export default function AdminDashboard() {
 
       {s && (
         <>
-          <div className="grid cols-3" style={{ marginBottom: 14 }}>
+          <div className="grid cols-kpi" style={{ marginBottom: 14 }}>
             <StatCard label="Revenue" value={money(s.revenueUsd)} icon="currency-dollar" tone="success" foot="▲ 12% vs last period" footTone="up" spark={[40, 55, 48, 70, 62, 90]} />
             <StatCard label="Credits sold" value={compact(s.creditsSold)} icon="coin" tone="brand" foot="prepaid balance issued" />
             <StatCard label="Numbers validated" value={compact(s.numbersValidated)} icon="phone-check" tone="info" foot={`across ${s.jobs} jobs`} />
