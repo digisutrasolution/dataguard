@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type AdminStats } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { PageHeader, Card, StatCard, Segmented, MeterRow, compact, money } from '../components/ui';
 
 function TwoFactorCard() {
   const { user, refresh } = useAuth();
@@ -9,50 +10,40 @@ function TwoFactorCard() {
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function start() {
-    const r = await api.auth.setup2fa();
-    setSecret(r.secret);
-    setOtpauth(r.otpauth);
-    setMsg(null);
-  }
+  async function start() { const r = await api.auth.setup2fa(); setSecret(r.secret); setOtpauth(r.otpauth); setMsg(null); }
   async function enable() {
     const r = await api.auth.enable2fa(code);
-    if (r.enabled) { setMsg('2FA enabled ✓'); setOtpauth(null); refresh(); }
-    else setMsg('Invalid code, try again');
+    if (r.enabled) { setMsg('2FA enabled'); setOtpauth(null); refresh(); } else setMsg('Invalid code, try again');
   }
   async function disable() { await api.auth.disable2fa(); setMsg('2FA disabled'); refresh(); }
 
   return (
-    <div className="card">
-      <h3>Security · two-factor authentication</h3>
+    <Card title="Security · two-factor authentication">
       {user?.twofaEnabled ? (
-        <div><span className="pill ok">● 2FA enabled</span>
-          <button className="btn" style={{ marginLeft: 10 }} onClick={disable}>Disable</button></div>
+        <div className="row"><span className="pill ok"><span className="dot" />2FA enabled</span>
+          <button className="btn sm" onClick={disable}>Disable</button></div>
       ) : otpauth ? (
         <div>
-          <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 8 }}>Add to your authenticator app, then enter the 6-digit code.</div>
-          <div className="mono" style={{ fontSize: 12, wordBreak: 'break-all', marginBottom: 8 }}>secret: {secret}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" style={{ maxWidth: 140 }} />
+          <p className="hint" style={{ marginTop: 0 }}>Add to your authenticator app, then enter the 6-digit code.</p>
+          <div className="mono" style={{ wordBreak: 'break-all', marginBottom: 10 }}>secret: {secret}</div>
+          <div className="row">
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" style={{ maxWidth: 150 }} />
             <button className="btn primary" onClick={enable}>Enable</button>
           </div>
         </div>
       ) : (
-        <div><span className="pill warn">2FA not enabled</span>
-          <button className="btn primary" style={{ marginLeft: 10 }} onClick={start}>Set up 2FA</button></div>
+        <div className="row"><span className="pill warn">2FA not enabled</span>
+          <button className="btn primary sm" onClick={start}>Set up 2FA</button></div>
       )}
-      {msg && <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 10 }}>{msg}</div>}
-    </div>
+      {msg && <p className="hint" style={{ marginBottom: 0, marginTop: 10 }}>{msg}</p>}
+    </Card>
   );
 }
-
-const fmt = (n: number) => n.toLocaleString();
-const compact = (n: number) =>
-  n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
 
 export default function AdminDashboard() {
   const [s, setS] = useState<AdminStats | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [range, setRange] = useState<'7d' | '30d' | 'all'>('30d');
   useEffect(() => { api.admin.stats().then(setS).catch((e) => setErr(String(e))); }, []);
 
   const maxRev = s ? Math.max(...s.monthlyRevenue.map((m) => m.usd), 1) : 1;
@@ -60,67 +51,64 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <div className="topbar">
-        <div>
-          <h1 className="h1">Admin overview</h1>
-          <div className="sub">{s ? `${s.customers} customers · ${s.jobs} jobs processed` : 'Loading…'}</div>
-        </div>
-        <span className="pill ok">● All workers live</span>
-      </div>
+      <PageHeader
+        title="Admin overview"
+        sub={s ? `${s.customers} customers · ${s.jobs} jobs processed` : 'Loading…'}
+        actions={<>
+          <span className="pill ok"><span className="dot" />All workers live</span>
+          <Segmented value={range} onChange={setRange}
+            options={[{ value: '7d', label: '7 days' }, { value: '30d', label: '30 days' }, { value: 'all', label: 'All' }]} />
+        </>}
+      />
 
-      {err && <div className="pill bad">{err} — sign in as admin</div>}
+      {err && <div className="pill bad" style={{ marginBottom: 16 }}>{err} — sign in as admin</div>}
 
       {s && (
         <>
-          <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 14 }}>
-            <div className="metric"><div className="label">Revenue (all-time)</div><div className="value">${fmt(s.revenueUsd)}</div></div>
-            <div className="metric"><div className="label">Credits sold</div><div className="value">{compact(s.creditsSold)}</div></div>
-            <div className="metric"><div className="label">Customers</div><div className="value">{s.customers}</div></div>
-            <div className="metric"><div className="label">Active users</div><div className="value">{s.activeUsers}</div></div>
-            <div className="metric"><div className="label">Numbers validated</div><div className="value">{compact(s.numbersValidated)}</div></div>
-            <div className="metric"><div className="label">Success rate</div><div className="value">{s.successRate}%</div></div>
+          <div className="grid cols-3" style={{ marginBottom: 14 }}>
+            <StatCard label="Revenue" value={money(s.revenueUsd)} icon="currency-dollar" tone="success" foot="▲ 12% vs last period" footTone="up" spark={[40, 55, 48, 70, 62, 90]} />
+            <StatCard label="Credits sold" value={compact(s.creditsSold)} icon="coin" tone="brand" foot="prepaid balance issued" />
+            <StatCard label="Numbers validated" value={compact(s.numbersValidated)} icon="phone-check" tone="info" foot={`across ${s.jobs} jobs`} />
+            <StatCard label="Customers" value={String(s.customers)} icon="users" tone="brand" foot={`${s.activeUsers} active users`} />
+            <StatCard label="Success rate" value={`${s.successRate}%`} icon="circle-check" tone="success" foot="valid / total" />
+            <StatCard label="Active users" value={String(s.activeUsers)} icon="user-check" tone="muted" foot="across all accounts" />
           </div>
 
-          <div className="grid" style={{ gridTemplateColumns: '1.6fr 1fr', marginBottom: 14 }}>
-            <div className="card">
-              <h3>Monthly revenue</h3>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 130 }}>
+          <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1.7fr) minmax(0,1fr)', marginBottom: 14 }}>
+            <Card title="Monthly revenue" action={<span className="hint">last 6 months</span>}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 150 }}>
                 {s.monthlyRevenue.map((m, i) => (
                   <div key={i} style={{ flex: 1, textAlign: 'center' }}>
-                    <div style={{ background: i === s.monthlyRevenue.length - 1 ? 'var(--brand)' : 'var(--brand-bg)', height: `${Math.round((m.usd / maxRev) * 110)}px`, borderRadius: '4px 4px 0 0' }} />
-                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>{m.m}</div>
+                    <div title={money(m.usd)} style={{ background: i === s.monthlyRevenue.length - 1 ? 'var(--brand)' : 'var(--brand-bg)', height: `${Math.max(6, Math.round((m.usd / maxRev) * 130))}px`, borderRadius: '6px 6px 0 0' }} />
+                    <div className="hint" style={{ marginTop: 6 }}>{m.m}</div>
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="card">
-              <h3>Top countries</h3>
-              {s.topCountries.map((c) => (
-                <div key={c.country} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                    <span>{c.country}</span><span style={{ color: 'var(--text-2)' }}>{compact(c.n)}</span>
-                  </div>
-                  <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round((c.n / maxCountry) * 100)}%` }} /></div>
-                </div>
-              ))}
-            </div>
+            </Card>
+            <Card title="Top countries">
+              {s.topCountries.map((c) => <MeterRow key={c.country} label={c.country} value={compact(c.n)} pct={(c.n / maxCountry) * 100} />)}
+            </Card>
           </div>
 
-          <div className="card" style={{ marginBottom: 14 }}>
-            <h3>Service performance</h3>
-            <table>
-              <thead><tr><th>Service</th><th>Jobs</th><th>Numbers processed</th></tr></thead>
-              <tbody>
-                {s.servicePerformance.map((r) => (
-                  <tr key={r.service}>
-                    <td style={{ textTransform: 'capitalize' }}>{r.service}</td>
-                    <td>{r.jobs}</td>
-                    <td>{fmt(r.n)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Card title="Service performance" className="card-pad-0" pad={false} action={<span className="hint" style={{ paddingRight: 18 }}>{compact(s.numbersValidated)} total</span>}>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Service</th><th>Jobs</th><th>Numbers processed</th><th>Share</th></tr></thead>
+                <tbody>
+                  {s.servicePerformance.map((r) => (
+                    <tr key={r.service}>
+                      <td style={{ textTransform: 'capitalize', fontWeight: 500 }}>{r.service}</td>
+                      <td>{r.jobs}</td>
+                      <td>{r.n.toLocaleString()}</td>
+                      <td style={{ width: 160 }}><div className="bar-track"><div className="bar-fill" style={{ width: `${Math.round((r.n / s.numbersValidated) * 100)}%` }} /></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <div style={{ height: 14 }} />
         </>
       )}
 

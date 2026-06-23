@@ -13,7 +13,8 @@ export default function Login() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function submit() {
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
     try {
@@ -27,40 +28,41 @@ export default function Login() {
       } else {
         setErr(r.error ?? 'Login failed');
       }
-    } catch (e) {
-      const msg = String(e).includes('twofa') ? '2FA code invalid' : 'Invalid email or password';
-      setErr(msg);
+    } catch (ex) {
+      setErr(String(ex).includes('twofa') ? '2FA code invalid' : 'Invalid email or password');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 380, margin: '8vh auto' }}>
-      <div className="logo" style={{ justifyContent: 'center', marginBottom: 8 }}>
-        <span className="mark">◈</span> DataGuard
-      </div>
-      <div className="sub" style={{ textAlign: 'center', marginBottom: 22 }}>Sign in to your account</div>
-      <div className="card">
-        <label>Email</label>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
-        <div style={{ height: 12 }} />
-        <label>Password</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-        {needTotp && (
-          <>
-            <div style={{ height: 12 }} />
-            <label>2FA code</label>
-            <input value={totp} onChange={(e) => setTotp(e.target.value)} inputMode="numeric" placeholder="123456" />
-          </>
-        )}
-        {err && <div className="pill bad" style={{ marginTop: 12 }}>{err}</div>}
-        <button className="btn primary" style={{ width: '100%', marginTop: 16 }} disabled={busy} onClick={submit}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 12, textAlign: 'center' }}>
-          Demo: admin@dataguard.io / admin123 · owner@acme.com / owner123
+    <div className="auth-wrap">
+      <div className="auth-card">
+        <div className="brand" style={{ justifyContent: 'center', fontSize: 20, marginBottom: 4 }}>
+          <span className="mark"><i className="ti ti-shield-check" aria-hidden="true" /></span>DataGuard
         </div>
+        <p className="hint" style={{ textAlign: 'center', marginBottom: 20 }}>Sign in to your account</p>
+        <form className="card" onSubmit={submit}>
+          <label htmlFor="email">Email</label>
+          <input id="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
+          <div style={{ height: 14 }} />
+          <label htmlFor="pw">Password</label>
+          <input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+          {needTotp && (
+            <>
+              <div style={{ height: 14 }} />
+              <label htmlFor="totp">2FA code</label>
+              <input id="totp" value={totp} onChange={(e) => setTotp(e.target.value)} inputMode="numeric" placeholder="123456" autoFocus />
+            </>
+          )}
+          {err && <div className="pill bad" style={{ marginTop: 14 }}>{err}</div>}
+          <button className="btn primary" style={{ width: '100%', marginTop: 18, justifyContent: 'center' }} disabled={busy} type="submit">
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+          <p className="hint" style={{ textAlign: 'center', marginTop: 14, marginBottom: 0 }}>
+            Demo: admin@dataguard.io / admin123 · owner@acme.com / owner123
+          </p>
+        </form>
       </div>
     </div>
   );

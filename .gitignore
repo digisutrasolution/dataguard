@@ -30,3 +30,6 @@ Thumbs.db
 coverage/
 .cache/
 tmp/
+
+# Local tooling / editor config
+.claude/
