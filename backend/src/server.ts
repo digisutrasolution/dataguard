@@ -33,7 +33,8 @@ import {
   disable2fa,
 } from './modules/auth/service.js';
 import { requireAuth, requirePermission } from './modules/auth/middleware.js';
-import { recordJob, listJobs } from './modules/jobs/jobs.js';
+import { recordJob, listJobs, createJob, getJob } from './modules/jobs/jobs.js';
+import { initQueue, enqueue, queueMode } from './queue/queue.js';
 import { adminStats, adminCustomers, customerStats } from './modules/reports/stats.js';
 import { logAudit, listAudit } from './modules/audit/audit.js';
 import { reqMeta } from './common/meta.js';
@@ -78,7 +79,7 @@ app.use('/api', (req, res, next) => {
 });
 
 app.get('/api/health', (_req, res) =>
-  res.json({ status: 'ok', service: 'DataGuard API', store: dbActive() ? 'postgres' : 'memory', ts: Date.now() }),
+  res.json({ status: 'ok', service: 'DataGuard API', store: dbActive() ? 'postgres' : 'memory', queue: queueMode(), ts: Date.now() }),
 );
 
 // ---- Auth (JWT + 2FA) ----------------------------------------------------
@@ -332,6 +333,43 @@ app.get('/api/history', async (_req, res) => res.json(await listJobs(CUSTOMER)))
 // GET /api/my/stats — customer dashboard aggregates (this month)
 app.get('/api/my/stats', async (_req, res) => res.json(await customerStats(CUSTOMER)));
 
+// ---- Async jobs (queue + workers) ----------------------------------------
+// POST /api/jobs — submit a validation OR detection job; processed in the
+// background with live progress. Returns immediately with a job id.
+const jobSchema = z.object({
+  numbers: z.array(z.string()).min(1).max(1_000_000),
+  defaultCountry: z.string().length(2).optional(),
+  service: z.enum(['basic', 'advanced', 'premium', 'detection']).default('basic'),
+  priority: z.enum(['normal', 'high']).default('normal'),
+});
+app.post('/api/jobs', async (req, res) => {
+  const p = jobSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.flatten() });
+  const { numbers, defaultCountry, service, priority } = p.data;
+  const jobType = service === 'detection' ? 'detection' : 'validation';
+  const cost = creditsFor(numbers.length, service);
+  try {
+    await deduct(CUSTOMER, cost, `job:${jobType}`);
+  } catch (e) {
+    if ((e as Error).message === 'INSUFFICIENT_BALANCE')
+      return res.status(402).json({ error: 'insufficient_balance', cost });
+    throw e;
+  }
+  const jobId = await createJob({
+    customerId: CUSTOMER, jobType, service, total: numbers.length, credits: cost,
+    country: defaultCountry ?? null, priority: priority === 'high' ? 10 : 0,
+  });
+  await enqueue({ jobId, customerId: CUSTOMER, jobType, service, numbers, defaultCountry }, priority === 'high' ? 1 : 0);
+  res.status(202).json({ jobId, status: 'queued', total: numbers.length, creditsUsed: cost, queue: queueMode() });
+});
+
+// GET /api/jobs/:id — poll job status + live progress + result sample
+app.get('/api/jobs/:id', async (req, res) => {
+  const job = await getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'not_found' });
+  res.json(job);
+});
+
 // 404 for unknown API routes
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
@@ -344,9 +382,9 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
   res.status(err?.status ?? 500).json({ error: 'internal_error' });
 });
 
-// Connect to Postgres (if configured) before accepting traffic.
-initDb().then((ok) => {
-  console.log(`[store] ${ok ? 'Postgres connected' : 'in-memory (no DB)'}`);
+// Connect to Postgres + queue (if configured) before accepting traffic.
+Promise.all([initDb(), initQueue()]).then(([dbOk]) => {
+  console.log(`[store] ${dbOk ? 'Postgres connected' : 'in-memory (no DB)'} · [queue] ${queueMode()}`);
   app.listen(PORT, () =>
     console.log(`DataGuard API listening on http://localhost:${PORT}`),
   );

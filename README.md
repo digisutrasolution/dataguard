@@ -15,6 +15,7 @@ dataguard/
 
 | Area | Status |
 |---|---|
+| Async jobs — queue + workers, chunked, live progress, priority (BullMQ/Redis or in-memory) | ✅ working |
 | Persistence — PostgreSQL (users, wallets, transactions ledger, providers, jobs) | ✅ working, durable |
 | Auth — JWT login/register, bcrypt, TOTP 2FA, RBAC roles/permissions | ✅ working |
 | Validation engine (single + bulk, E.164, dedupe, type) | ✅ working |
@@ -80,6 +81,25 @@ CREATE DATABASE dataguard OWNER dataguard;
 Then set `DATABASE_URL=postgresql://dataguard:your-password@localhost:5432/dataguard`
 in `backend/.env` and run `npm run migrate`. Verified: wallet balance + job history
 survive a server restart (durable).
+
+## Async jobs — queue + workers
+
+Bulk validation/detection run in the background so large uploads never block the
+request. Submit returns a job id immediately; the UI polls for live progress.
+
+- `POST /api/jobs` `{ numbers[], defaultCountry?, service, priority }` → `{ jobId, status, queue }`
+- `GET /api/jobs/:id` → `{ status, processed, total_records, valid/invalid/dup, sample }`
+- Processing is **chunked (5k)** with progress checkpoints after each chunk and a
+  yield between chunks so the server stays responsive.
+
+**Two modes** (auto-selected, like the DB):
+| `REDIS_URL` set | Engine | Behavior |
+|---|---|---|
+| yes | BullMQ worker | persistent, retried (3×, backoff), priority, resumable across restarts |
+| no | in-process | runs in background now; jobs lost on restart |
+
+`GET /api/health` reports `queue: redis | memory`. To enable Redis locally: install
+Memurai (Windows) or run Redis via WSL/Docker, then set `REDIS_URL=redis://localhost:6379`.
 
 ## Auth — JWT + 2FA + RBAC
 

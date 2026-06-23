@@ -91,6 +91,27 @@ export interface AuthUser {
   twofaEnabled: boolean;
 }
 
+export interface JobSample {
+  raw: string; e164: string | null; iso2: string | null;
+  numberType?: string | null; status?: string;
+  registration?: string; carrier?: string | null;
+}
+
+export interface JobDetail {
+  id: string;
+  job_type: 'validation' | 'detection';
+  service: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  total_records: number;
+  processed: number;
+  valid_count: number;
+  invalid_count: number;
+  dup_count: number;
+  credits_used: number;
+  sample: JobSample[] | null;
+  error: string | null;
+}
+
 export interface AdminStats {
   customers: number;
   activeUsers: number;
@@ -168,6 +189,9 @@ export const api = {
   balance: () => get<{ customerId: string; balance: number }>('/balance'),
   history: () => get<JobRow[]>('/history'),
   myStats: () => get<MyStats>('/my/stats'),
+  submitJob: (numbers: string[], defaultCountry: string, service: string, priority: 'normal' | 'high' = 'normal') =>
+    post<{ jobId: string; status: string; total: number; creditsUsed: number; queue: string }>('/jobs', { numbers, defaultCountry, service, priority }),
+  job: (id: string) => get<JobDetail>(`/jobs/${id}`),
 
   admin: {
     stats: () => get<AdminStats>('/admin/stats'),
