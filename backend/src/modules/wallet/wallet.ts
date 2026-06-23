@@ -1,6 +1,6 @@
 // Wallet repository + pricing. Postgres when active (with a transactions ledger),
 // in-memory Map otherwise.
-import { dbActive, q } from '../../db/pool.js';
+import { dbActive, q, withTx } from '../../db/pool.js';
 
 export interface Wallet {
   customerId: string;
@@ -43,20 +43,23 @@ export async function getWallet(customerId: string): Promise<Wallet> {
 
 export async function deduct(customerId: string, credits: number, ref?: string): Promise<Wallet> {
   if (dbActive()) {
-    // Atomic guarded debit: only succeeds if balance is sufficient.
-    const { rows } = await q(
-      `UPDATE wallets SET balance = balance - $2, updated_at = now()
-       WHERE customer_id = $1 AND balance >= $2 RETURNING balance`,
-      [customerId, credits],
-    );
-    if (!rows[0]) throw new Error('INSUFFICIENT_BALANCE');
-    const balance = Number(rows[0].balance);
-    await q(
-      `INSERT INTO transactions (customer_id, type, amount, balance_after, ref)
-       VALUES ($1,'debit',$2,$3,$4)`,
-      [customerId, credits, balance, ref ?? null],
-    );
-    return { customerId, balance };
+    // Atomic: guarded debit + ledger insert in one transaction. If either fails,
+    // both roll back — the balance can never drift from the ledger.
+    return withTx(async (client) => {
+      const { rows } = await client.query(
+        `UPDATE wallets SET balance = balance - $2, updated_at = now()
+         WHERE customer_id = $1 AND balance >= $2 RETURNING balance`,
+        [customerId, credits],
+      );
+      if (!rows[0]) throw new Error('INSUFFICIENT_BALANCE');
+      const balance = Number(rows[0].balance);
+      await client.query(
+        `INSERT INTO transactions (customer_id, type, amount, balance_after, ref)
+         VALUES ($1,'debit',$2,$3,$4)`,
+        [customerId, credits, balance, ref ?? null],
+      );
+      return { customerId, balance };
+    });
   }
   const w = await getWallet(customerId);
   if (w.balance < credits) throw new Error('INSUFFICIENT_BALANCE');
@@ -66,19 +69,21 @@ export async function deduct(customerId: string, credits: number, ref?: string):
 
 export async function recharge(customerId: string, credits: number, ref?: string): Promise<Wallet> {
   if (dbActive()) {
-    await q('INSERT INTO wallets (customer_id, balance) VALUES ($1,0) ON CONFLICT DO NOTHING', [customerId]);
-    const { rows } = await q(
-      `UPDATE wallets SET balance = balance + $2, updated_at = now()
-       WHERE customer_id = $1 RETURNING balance`,
-      [customerId, credits],
-    );
-    const balance = Number(rows[0].balance);
-    await q(
-      `INSERT INTO transactions (customer_id, type, amount, balance_after, ref)
-       VALUES ($1,'recharge',$2,$3,$4)`,
-      [customerId, credits, balance, ref ?? null],
-    );
-    return { customerId, balance };
+    return withTx(async (client) => {
+      await client.query('INSERT INTO wallets (customer_id, balance) VALUES ($1,0) ON CONFLICT DO NOTHING', [customerId]);
+      const { rows } = await client.query(
+        `UPDATE wallets SET balance = balance + $2, updated_at = now()
+         WHERE customer_id = $1 RETURNING balance`,
+        [customerId, credits],
+      );
+      const balance = Number(rows[0].balance);
+      await client.query(
+        `INSERT INTO transactions (customer_id, type, amount, balance_after, ref)
+         VALUES ($1,'recharge',$2,$3,$4)`,
+        [customerId, credits, balance, ref ?? null],
+      );
+      return { customerId, balance };
+    });
   }
   const w = await getWallet(customerId);
   w.balance += credits;

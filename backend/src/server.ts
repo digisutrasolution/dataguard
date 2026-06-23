@@ -3,6 +3,8 @@
 // with a simple API-key check; wire to api_keys table + Redis in production.
 import 'dotenv/config';
 import express from 'express';
+import 'express-async-errors';
+import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import { z } from 'zod';
 import type { CountryCode } from 'libphonenumber-js';
@@ -33,14 +35,29 @@ import {
 import { requireAuth, requirePermission } from './modules/auth/middleware.js';
 import { recordJob, listJobs } from './modules/jobs/jobs.js';
 import { adminStats, adminCustomers, customerStats } from './modules/reports/stats.js';
+import { logAudit, listAudit } from './modules/audit/audit.js';
+import { reqMeta } from './common/meta.js';
 import { initDb, dbActive } from './db/pool.js';
 
 const app = express();
+app.set('trust proxy', 1); // behind a proxy/LB — needed for correct req.ip
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 const PORT = Number(process.env.PORT ?? 4000);
 const CUSTOMER = 'demo-customer'; // resolved from API key in production
+
+// --- Rate limiting ---
+// In-memory store (per-process). Swap for a Redis store for multi-instance.
+const apiLimiter = rateLimit({
+  windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'rate_limited' },
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'too_many_attempts' },
+});
+app.use('/api', apiLimiter);
 
 // --- API-key gate (demo) for the programmatic data API ---
 // Portal/admin routes (/auth, /admin) use JWT instead and are exempt here.
@@ -70,32 +87,41 @@ const credsSchema = z.object({
   password: z.string().min(6),
   totp: z.string().optional(),
 });
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   const p = credsSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.flatten() });
   try {
-    res.status(201).json(await register(p.data.email, p.data.password));
+    const out = await register(p.data.email, p.data.password);
+    const m = reqMeta(req);
+    void logAudit({ actor: p.data.email, customerId: out.user.customerId, action: 'user.register', target: 'self', ...m });
+    res.status(201).json(out);
   } catch {
     res.status(409).json({ error: 'email_taken' });
   }
 });
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const p = credsSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.flatten() });
+  const m = reqMeta(req);
   const r = await login(p.data.email, p.data.password, p.data.totp);
   if (!r.ok) {
+    if (r.reason !== 'twofa_required')
+      void logAudit({ actor: p.data.email, action: 'login.failed', target: r.reason, ...m });
     const code = r.reason === 'twofa_required' ? 200 : 401;
     return res.status(code).json({ error: r.reason });
   }
+  void logAudit({ actor: r.user.email, customerId: r.user.customerId, action: 'login.success', target: 'session', ...m });
   res.json({ token: r.token, user: r.user });
 });
 app.get('/api/auth/me', requireAuth, async (req, res) => res.json(await me(req.user!.email)));
 app.post('/api/auth/2fa/setup', requireAuth, async (req, res) => res.json(await setup2fa(req.user!.email)));
 app.post('/api/auth/2fa/enable', requireAuth, async (req, res) => {
   const ok = await enable2fa(req.user!.email, String(req.body?.totp ?? ''));
+  if (ok) void logAudit({ actor: req.user!.email, customerId: req.user!.customerId, action: '2fa.enable', ...reqMeta(req) });
   res.status(ok ? 200 : 400).json({ enabled: ok });
 });
 app.post('/api/auth/2fa/disable', requireAuth, async (req, res) => {
+  void logAudit({ actor: req.user!.email, customerId: req.user!.customerId, action: '2fa.disable', ...reqMeta(req) });
   await disable2fa(req.user!.email);
   res.json({ enabled: false });
 });
@@ -128,8 +154,10 @@ app.post('/api/bulk-validation', async (req, res) => {
   let wallet;
   try {
     wallet = await deduct(CUSTOMER, cost, 'bulk-validation');
-  } catch {
-    return res.status(402).json({ error: 'insufficient_balance', cost });
+  } catch (e) {
+    if ((e as Error).message === 'INSUFFICIENT_BALANCE')
+      return res.status(402).json({ error: 'insufficient_balance', cost });
+    throw e; // real errors -> global handler, not masked as "insufficient balance"
   }
   const summary = validateBulk(p.data.numbers, {
     defaultCountry: p.data.defaultCountry as CountryCode | undefined,
@@ -166,8 +194,10 @@ app.post('/api/detect', async (req, res) => {
   let wallet;
   try {
     wallet = await deduct(CUSTOMER, cost, 'detect');
-  } catch {
-    return res.status(402).json({ error: 'insufficient_balance', cost });
+  } catch (e) {
+    if ((e as Error).message === 'INSUFFICIENT_BALANCE')
+      return res.status(402).json({ error: 'insufficient_balance', cost });
+    throw e; // real errors -> global handler, not masked as "insufficient balance"
   }
   const provider = await getActiveProvider();
   const d = await provider.detect(v.e164!);
@@ -186,8 +216,10 @@ app.post('/api/detect-bulk', async (req, res) => {
   let wallet;
   try {
     wallet = await deduct(CUSTOMER, cost, 'detect-bulk');
-  } catch {
-    return res.status(402).json({ error: 'insufficient_balance', cost });
+  } catch (e) {
+    if ((e as Error).message === 'INSUFFICIENT_BALANCE')
+      return res.status(402).json({ error: 'insufficient_balance', cost });
+    throw e; // real errors -> global handler, not masked as "insufficient balance"
   }
   const validated = p.data.numbers.map((n) =>
     validateOne(n, { defaultCountry: p.data.defaultCountry as CountryCode | undefined }),
@@ -217,6 +249,7 @@ app.post('/api/detect-bulk', async (req, res) => {
 const canReport = [requireAuth, requirePermission('reports.view')];
 app.get('/api/admin/stats', ...canReport, async (_req, res) => res.json(await adminStats()));
 app.get('/api/admin/customers', ...canReport, async (_req, res) => res.json(await adminCustomers()));
+app.get('/api/admin/audit', ...canReport, async (req, res) => res.json(await listAudit(Number(req.query.limit) || 50)));
 
 // ---- Admin: detection provider management (JWT + RBAC) -------------------
 const canManage = [requireAuth, requirePermission('detection.manage')];
@@ -231,7 +264,9 @@ const addProviderSchema = z.object({
 app.post('/api/admin/detection-providers', ...canManage, async (req, res) => {
   const p = addProviderSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.flatten() });
-  res.status(201).json(await addProvider(p.data));
+  const out = await addProvider(p.data);
+  void logAudit({ actor: req.user!.email, action: 'provider.create', target: `${out.type}:${out.id}`, ...reqMeta(req) });
+  res.status(201).json(out);
 });
 
 const patchProviderSchema = z.object({
@@ -244,18 +279,21 @@ app.patch('/api/admin/detection-providers/:id', ...canManage, async (req, res) =
   if (!p.success) return res.status(400).json({ error: p.error.flatten() });
   const updated = await updateProvider(req.params.id, p.data);
   if (!updated) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ actor: req.user!.email, action: 'provider.update', target: req.params.id, ...reqMeta(req) });
   res.json(updated);
 });
 
 app.post('/api/admin/detection-providers/:id/activate', ...canManage, async (req, res) => {
   const activated = await activateProvider(req.params.id);
   if (!activated) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ actor: req.user!.email, action: 'provider.activate', target: req.params.id, ...reqMeta(req) });
   res.json(activated);
 });
 
 app.delete('/api/admin/detection-providers/:id', ...canManage, async (req, res) => {
   if (!(await removeProvider(req.params.id)))
     return res.status(409).json({ error: 'cannot_remove_active_or_mock' });
+  void logAudit({ actor: req.user!.email, action: 'provider.delete', target: req.params.id, ...reqMeta(req) });
   res.json({ ok: true });
 });
 
@@ -283,7 +321,9 @@ app.get('/api/balance', async (_req, res) => res.json(await getWallet(CUSTOMER))
 app.post('/api/recharge', async (req, res) => {
   const credits = Number(req.body?.credits ?? 0);
   if (!credits || credits < 0) return res.status(400).json({ error: 'bad_amount' });
-  res.json(await recharge(CUSTOMER, credits, 'manual'));
+  const w = await recharge(CUSTOMER, credits, 'manual');
+  void logAudit({ customerId: CUSTOMER, action: 'wallet.recharge', target: `${credits} credits`, ...reqMeta(req) });
+  res.json(w);
 });
 
 // GET /api/history — recent validation jobs for the customer
@@ -291,6 +331,18 @@ app.get('/api/history', async (_req, res) => res.json(await listJobs(CUSTOMER)))
 
 // GET /api/my/stats — customer dashboard aggregates (this month)
 app.get('/api/my/stats', async (_req, res) => res.json(await customerStats(CUSTOMER)));
+
+// 404 for unknown API routes
+app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
+
+// ---- Global error handler (last) ----
+// express-async-errors forwards rejected promises here, so a thrown error in any
+// handler returns a clean 500 JSON instead of hanging the request.
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[error]', req.method, req.path, '-', err?.message ?? err);
+  if (res.headersSent) return;
+  res.status(err?.status ?? 500).json({ error: 'internal_error' });
+});
 
 // Connect to Postgres (if configured) before accepting traffic.
 initDb().then((ok) => {

@@ -35,3 +35,20 @@ export async function q<T extends pg.QueryResultRow = any>(
   if (!pool) throw new Error('NO_DB');
   return pool.query<T>(text, params);
 }
+
+// Run a function inside a single transaction (BEGIN/COMMIT, ROLLBACK on error).
+export async function withTx<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  if (!pool) throw new Error('NO_DB');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}

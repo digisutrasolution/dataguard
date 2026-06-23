@@ -134,6 +134,17 @@ export interface JobRow {
   country?: string;
 }
 
+export interface AuditRow {
+  id: number;
+  actor: string | null;
+  customer_id: string | null;
+  action: string;
+  target: string | null;
+  ip: string | null;
+  device: string | null;
+  created_at: string;
+}
+
 export type ProviderType = 'mock' | 'http' | 'apify';
 
 export interface ProviderConfig {
@@ -161,6 +172,7 @@ export const api = {
   admin: {
     stats: () => get<AdminStats>('/admin/stats'),
     customers: () => get<CustomerRow[]>('/admin/customers'),
+    audit: (limit = 50) => get<AuditRow[]>(`/admin/audit?limit=${limit}`),
   },
 
   auth: {
