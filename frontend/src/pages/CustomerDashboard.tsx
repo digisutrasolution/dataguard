@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, type JobRow, type MyStats } from '../lib/api';
 import { PageHeader, Card, StatCard, Badge, compact, money } from '../components/ui';
 
@@ -26,6 +27,10 @@ export default function CustomerDashboard() {
           foot={stats ? `${stats.jobs} jobs` : ''} />
         <StatCard label="Success rate" value={stats ? `${stats.successRate}%` : '—'} icon="circle-check" tone="success" foot="valid / total" />
         <StatCard label="Credits spent" value={stats ? compact(stats.creditsSpent) : '—'} icon="coin" tone="muted" foot="this month" />
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <Link to="/recharge" className="btn primary"><i className="ti ti-wallet" aria-hidden="true" /> Recharge wallet</Link>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)' }}>

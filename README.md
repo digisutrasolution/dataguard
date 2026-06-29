@@ -16,6 +16,7 @@ dataguard/
 | Area | Status |
 |---|---|
 | Async jobs — queue + workers, chunked, live progress, priority (BullMQ/Redis or in-memory) | ✅ working |
+| Crypto payments — pluggable gateway, payment lifecycle, auto wallet credit | ✅ working (mock; NOWPayments-ready) |
 | Persistence — PostgreSQL (users, wallets, transactions ledger, providers, jobs) | ✅ working, durable |
 | Auth — JWT login/register, bcrypt, TOTP 2FA, RBAC roles/permissions | ✅ working |
 | Validation engine (single + bulk, E.164, dedupe, type) | ✅ working |
@@ -81,6 +82,21 @@ CREATE DATABASE dataguard OWNER dataguard;
 Then set `DATABASE_URL=postgresql://dataguard:your-password@localhost:5432/dataguard`
 in `backend/.env` and run `npm run migrate`. Verified: wallet balance + job history
 survive a server restart (durable).
+
+## Crypto payments (recharge)
+
+Prepaid wallet top-ups via crypto. Pluggable gateway (like detection providers):
+a mock provider simulates blockchain confirmations offline; a real provider
+(NOWPayments) activates when `NOWPAYMENTS_API_KEY` is set.
+
+- `POST /api/payments` `{ coin, credits }` → `{ address, amount, status, … }`
+- `GET /api/payments/:id` → live `{ status, confirmations, … }`
+- `GET /api/payments` → history · `POST /api/payments/webhook` → provider IPN (key-gate exempt)
+- Lifecycle: `pending → confirming → confirmed → completed`; wallet is credited
+  **exactly once** (idempotent guard), recorded in the transactions ledger.
+- 1 credit = $0.0025. Recharge UI at `/recharge` with live confirmation progress.
+
+Coins: USDT, BTC, ETH, TRX. Migration `004_payments.sql`.
 
 ## Async jobs — queue + workers
 

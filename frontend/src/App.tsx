@@ -3,6 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import AdminDashboard from './pages/AdminDashboard';
 import CustomerDashboard from './pages/CustomerDashboard';
 import Validate from './pages/Validate';
+import Recharge from './pages/Recharge';
 import Providers from './pages/Providers';
 import Customers from './pages/Customers';
 import Audit from './pages/Audit';
@@ -13,6 +14,7 @@ const NAV = {
   customer: [
     { to: '/dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
     { to: '/validate', icon: 'circle-check', label: 'Validate' },
+    { to: '/recharge', icon: 'wallet', label: 'Recharge' },
   ],
   admin: [
     { to: '/admin', icon: 'chart-bar', label: 'Overview' },
@@ -94,6 +96,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<CustomerDashboard />} />
             <Route path="/validate" element={<Validate />} />
+          <Route path="/recharge" element={<Recharge />} />
             <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
             <Route path="/admin/customers" element={<Protected><Customers /></Protected>} />
             <Route path="/admin/providers" element={<Protected><Providers /></Protected>} />

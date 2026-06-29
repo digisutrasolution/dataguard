@@ -166,6 +166,23 @@ export interface AuditRow {
   created_at: string;
 }
 
+export type Coin = 'USDT' | 'BTC' | 'ETH' | 'TRX';
+export interface Payment {
+  id: string;
+  coin: Coin;
+  address: string;
+  amount: number;
+  amount_usd: number;
+  credits: number;
+  confirmations: number;
+  required_confirmations: number;
+  status: 'pending' | 'confirming' | 'confirmed' | 'completed' | 'failed' | 'expired';
+  tx_hash: string | null;
+  provider: string;
+  expires_at: string | null;
+  created_at: string;
+}
+
 export type ProviderType = 'mock' | 'http' | 'apify';
 
 export interface ProviderConfig {
@@ -192,6 +209,12 @@ export const api = {
   submitJob: (numbers: string[], defaultCountry: string, service: string, priority: 'normal' | 'high' = 'normal') =>
     post<{ jobId: string; status: string; total: number; creditsUsed: number; queue: string }>('/jobs', { numbers, defaultCountry, service, priority }),
   job: (id: string) => get<JobDetail>(`/jobs/${id}`),
+
+  payments: {
+    create: (coin: Coin, credits: number) => post<Payment>('/payments', { coin, credits }),
+    get: (id: string) => get<Payment>(`/payments/${id}`),
+    list: () => get<Payment[]>('/payments'),
+  },
 
   admin: {
     stats: () => get<AdminStats>('/admin/stats'),

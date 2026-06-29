@@ -37,6 +37,8 @@ import { recordJob, listJobs, createJob, getJob } from './modules/jobs/jobs.js';
 import { initQueue, enqueue, queueMode } from './queue/queue.js';
 import { adminStats, adminCustomers, customerStats } from './modules/reports/stats.js';
 import { logAudit, listAudit } from './modules/audit/audit.js';
+import { createPayment, getPayment, listPayments, completePayment } from './modules/payments/payments.js';
+import { COINS } from './modules/payments/provider.js';
 import { reqMeta } from './common/meta.js';
 import { initDb, dbActive } from './db/pool.js';
 
@@ -65,6 +67,7 @@ app.use('/api', apiLimiter);
 app.use('/api', (req, res, next) => {
   if (
     req.path === '/health' ||
+    req.path === '/payments/webhook' || // external provider IPN — verify signature instead
     req.path.startsWith('/auth') ||
     req.path.startsWith('/admin')
   ) {
@@ -325,6 +328,35 @@ app.post('/api/recharge', async (req, res) => {
   const w = await recharge(CUSTOMER, credits, 'manual');
   void logAudit({ customerId: CUSTOMER, action: 'wallet.recharge', target: `${credits} credits`, ...reqMeta(req) });
   res.json(w);
+});
+
+// ---- Crypto payments (recharge) ------------------------------------------
+// POST /api/payments — create a crypto recharge; returns address + amount.
+const paymentSchema = z.object({
+  coin: z.enum(['USDT', 'BTC', 'ETH', 'TRX']),
+  credits: z.number().int().positive().max(100_000_000),
+});
+app.post('/api/payments', async (req, res) => {
+  const p = paymentSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.flatten() });
+  const payment = await createPayment({ customerId: CUSTOMER, coin: p.data.coin, credits: p.data.credits });
+  void logAudit({ customerId: CUSTOMER, action: 'payment.create', target: `${p.data.credits} via ${p.data.coin}`, ...reqMeta(req) });
+  res.status(201).json(payment);
+});
+app.get('/api/payments', async (_req, res) => res.json(await listPayments(CUSTOMER)));
+app.get('/api/payments/:id', async (req, res) => {
+  const payment = await getPayment(req.params.id);
+  if (!payment) return res.status(404).json({ error: 'not_found' });
+  res.json(payment);
+});
+app.get('/api/payments/coins', (_req, res) => res.json({ coins: COINS }));
+// POST /api/payments/webhook — IPN endpoint for real providers (no key gate; verify signature in prod).
+app.post('/api/payments/webhook', async (req, res) => {
+  const { id, status, tx_hash } = req.body ?? {};
+  if (status === 'finished' || status === 'confirmed' || status === 'completed') {
+    if (id) await completePayment(String(id), tx_hash);
+  }
+  res.json({ ok: true });
 });
 
 // GET /api/history — recent validation jobs for the customer
