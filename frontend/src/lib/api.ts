@@ -166,6 +166,27 @@ export interface AuditRow {
   created_at: string;
 }
 
+export interface PricingRule {
+  id: string;
+  service: string;
+  iso2: string | null;
+  customer_id: string | null;
+  min_qty: number;
+  credits_per_number: number;
+  active: boolean;
+}
+
+export interface Invoice {
+  id: string;
+  number: string;
+  payment_id: string | null;
+  coin: string | null;
+  amount_usd: number;
+  credits: number;
+  status: string;
+  created_at: string;
+}
+
 export type Coin = 'USDT' | 'BTC' | 'ETH' | 'TRX';
 export interface Payment {
   id: string;
@@ -220,6 +241,28 @@ export const api = {
     stats: () => get<AdminStats>('/admin/stats'),
     customers: () => get<CustomerRow[]>('/admin/customers'),
     audit: (limit = 50) => get<AuditRow[]>(`/admin/audit?limit=${limit}`),
+    pricing: {
+      list: () => get<PricingRule[]>('/admin/pricing'),
+      create: (body: { service: string; iso2?: string; customerId?: string; minQty?: number; creditsPerNumber: number }) =>
+        post<PricingRule>('/admin/pricing', body),
+      update: (id: string, body: { creditsPerNumber?: number; minQty?: number; active?: boolean }) =>
+        patch<PricingRule>(`/admin/pricing/${id}`, body),
+      remove: (id: string) => del<{ ok: boolean }>(`/admin/pricing/${id}`),
+    },
+  },
+
+  invoices: {
+    list: () => get<Invoice[]>('/invoices'),
+    download: async (id: string, number: string) => {
+      const res = await fetch(`${base}/invoices/${id}/pdf`, { headers: headers(false) });
+      if (!res.ok) throw new Error('download_failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${number}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    },
   },
 
   auth: {

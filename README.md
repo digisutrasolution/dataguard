@@ -17,6 +17,8 @@ dataguard/
 |---|---|
 | Async jobs — queue + workers, chunked, live progress, priority (BullMQ/Redis or in-memory) | ✅ working |
 | Crypto payments — pluggable gateway, payment lifecycle, auto wallet credit | ✅ working (mock; NOWPayments-ready) |
+| Pricing — DB-driven rules (service/country/customer + bulk tiers), admin-managed | ✅ working |
+| Invoices — auto-generated on payment, PDF download | ✅ working |
 | Persistence — PostgreSQL (users, wallets, transactions ledger, providers, jobs) | ✅ working, durable |
 | Auth — JWT login/register, bcrypt, TOTP 2FA, RBAC roles/permissions | ✅ working |
 | Validation engine (single + bulk, E.164, dedupe, type) | ✅ working |
@@ -82,6 +84,19 @@ CREATE DATABASE dataguard OWNER dataguard;
 Then set `DATABASE_URL=postgresql://dataguard:your-password@localhost:5432/dataguard`
 in `backend/.env` and run `npm run migrate`. Verified: wallet balance + job history
 survive a server restart (durable).
+
+## Pricing & invoices
+
+Pricing is DB-driven (`pricing_rules`, migration `005_billing.sql`) and managed in
+**Admin → Pricing**. A rule sets `credits_per_number` for a service, optionally
+scoped to a country and/or customer, with bulk tiers via `min_qty`. Resolution
+picks the most specific match: **customer > country > standard**, then the highest
+matching tier. Falls back to the built-in rates when no DB/rule. `priceFor()`
+replaces the old hardcoded `creditsFor`.
+
+Invoices are generated automatically when a payment completes:
+`GET /api/invoices`, `GET /api/invoices/:id`, `GET /api/invoices/:id/pdf` (PDF via
+pdfkit). Customers see them on `/recharge` with a download button.
 
 ## Crypto payments (recharge)
 

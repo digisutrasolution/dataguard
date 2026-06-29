@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { dbActive, q } from '../../db/pool.js';
 import { recharge } from '../wallet/wallet.js';
+import { createInvoiceForPayment } from '../invoices/invoices.js';
 import { getCryptoProvider, type Coin } from './provider.js';
 
 export type PaymentStatus = 'pending' | 'confirming' | 'confirmed' | 'completed' | 'failed' | 'expired';
@@ -96,15 +97,19 @@ export async function completePayment(id: string, txHash?: string): Promise<Paym
        SET status='completed', credited=true, confirmations=required_confirmations,
            tx_hash=COALESCE($2,tx_hash), updated_at=now()
        WHERE id=$1 AND credited=false
-       RETURNING customer_id, credits`,
+       RETURNING customer_id, credits, coin, amount_usd`,
       [id, txHash ?? null]);
-    if (rows[0]) await recharge(rows[0].customer_id, Number(rows[0].credits), `crypto:${id}`);
+    if (rows[0]) {
+      await recharge(rows[0].customer_id, Number(rows[0].credits), `crypto:${id}`);
+      await createInvoiceForPayment({ id, customerId: rows[0].customer_id, coin: rows[0].coin, amountUsd: Number(rows[0].amount_usd), credits: Number(rows[0].credits) });
+    }
   } else {
     const p = mem.get(id);
     if (p && !p.credited) {
       p.credited = true; p.status = 'completed'; p.confirmations = p.required_confirmations;
       if (txHash) p.tx_hash = txHash; p.updated_at = new Date().toISOString();
       await recharge(p.customer_id, p.credits, `crypto:${id}`);
+      await createInvoiceForPayment({ id, customerId: p.customer_id, coin: p.coin, amountUsd: p.amount_usd, credits: p.credits });
     }
   }
   return getPayment(id);

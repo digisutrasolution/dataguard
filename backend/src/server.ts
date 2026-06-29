@@ -14,7 +14,10 @@ import {
   generate,
   type OutFormat,
 } from './modules/validation/engine.js';
-import { creditsFor, deduct, getWallet, recharge } from './modules/wallet/wallet.js';
+import { deduct, getWallet, recharge } from './modules/wallet/wallet.js';
+import { priceFor, listRules, createRule, updateRule, deleteRule } from './modules/pricing/pricing.js';
+import { listInvoices, getInvoice } from './modules/invoices/invoices.js';
+import PDFDocument from 'pdfkit';
 import { detectMany } from './modules/detection/provider.js';
 import {
   listProviders,
@@ -154,7 +157,7 @@ const bulkSchema = z.object({
 app.post('/api/bulk-validation', async (req, res) => {
   const p = bulkSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.flatten() });
-  const cost = creditsFor(p.data.numbers.length, p.data.service);
+  const cost = await priceFor(p.data.service, p.data.numbers.length, { country: p.data.defaultCountry, customerId: CUSTOMER });
   let wallet;
   try {
     wallet = await deduct(CUSTOMER, cost, 'bulk-validation');
@@ -194,7 +197,7 @@ app.post('/api/detect', async (req, res) => {
   if (v.status !== 'valid') {
     return res.json({ input: v.raw, e164: null, iso2: v.iso2, registration: 'unknown', reason: 'invalid_number' });
   }
-  const cost = creditsFor(1, 'detection');
+  const cost = await priceFor('detection', 1, { country: p.data.defaultCountry, customerId: CUSTOMER });
   let wallet;
   try {
     wallet = await deduct(CUSTOMER, cost, 'detect');
@@ -216,7 +219,7 @@ const detectBulkSchema = z.object({
 app.post('/api/detect-bulk', async (req, res) => {
   const p = detectBulkSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.flatten() });
-  const cost = creditsFor(p.data.numbers.length, 'detection');
+  const cost = await priceFor('detection', p.data.numbers.length, { country: p.data.defaultCountry, customerId: CUSTOMER });
   let wallet;
   try {
     wallet = await deduct(CUSTOMER, cost, 'detect-bulk');
@@ -254,6 +257,38 @@ const canReport = [requireAuth, requirePermission('reports.view')];
 app.get('/api/admin/stats', ...canReport, async (_req, res) => res.json(await adminStats()));
 app.get('/api/admin/customers', ...canReport, async (_req, res) => res.json(await adminCustomers()));
 app.get('/api/admin/audit', ...canReport, async (req, res) => res.json(await listAudit(Number(req.query.limit) || 50)));
+
+// ---- Admin: pricing rules (system admin) ---------------------------------
+const canAdmin = [requireAuth, requirePermission('system.admin')];
+app.get('/api/admin/pricing', ...canAdmin, async (_req, res) => res.json(await listRules()));
+
+const ruleSchema = z.object({
+  service: z.enum(['basic', 'advanced', 'premium', 'detection']),
+  iso2: z.string().length(2).optional(),
+  customerId: z.string().optional(),
+  minQty: z.number().int().min(0).default(0),
+  creditsPerNumber: z.number().positive(),
+});
+app.post('/api/admin/pricing', ...canAdmin, async (req, res) => {
+  const p = ruleSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.flatten() });
+  const rule = await createRule(p.data);
+  void logAudit({ actor: req.user!.email, action: 'pricing.create', target: `${p.data.service}@${p.data.creditsPerNumber}`, ...reqMeta(req) });
+  res.status(201).json(rule);
+});
+app.patch('/api/admin/pricing/:id', ...canAdmin, async (req, res) => {
+  const patch = z.object({ creditsPerNumber: z.number().positive().optional(), minQty: z.number().int().min(0).optional(), active: z.boolean().optional() }).safeParse(req.body);
+  if (!patch.success) return res.status(400).json({ error: patch.error.flatten() });
+  const rule = await updateRule(req.params.id, patch.data);
+  if (!rule) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ actor: req.user!.email, action: 'pricing.update', target: req.params.id, ...reqMeta(req) });
+  res.json(rule);
+});
+app.delete('/api/admin/pricing/:id', ...canAdmin, async (req, res) => {
+  if (!(await deleteRule(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ actor: req.user!.email, action: 'pricing.delete', target: req.params.id, ...reqMeta(req) });
+  res.json({ ok: true });
+});
 
 // ---- Admin: detection provider management (JWT + RBAC) -------------------
 const canManage = [requireAuth, requirePermission('detection.manage')];
@@ -359,6 +394,42 @@ app.post('/api/payments/webhook', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- Invoices ------------------------------------------------------------
+app.get('/api/invoices', async (_req, res) => res.json(await listInvoices(CUSTOMER)));
+app.get('/api/invoices/:id', async (req, res) => {
+  const inv = await getInvoice(req.params.id, CUSTOMER);
+  if (!inv) return res.status(404).json({ error: 'not_found' });
+  res.json(inv);
+});
+app.get('/api/invoices/:id/pdf', async (req, res) => {
+  const inv = await getInvoice(req.params.id, CUSTOMER);
+  if (!inv) return res.status(404).json({ error: 'not_found' });
+  res.setHeader('content-type', 'application/pdf');
+  res.setHeader('content-disposition', `attachment; filename="${inv.number}.pdf"`);
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  doc.pipe(res);
+  doc.fontSize(20).text('DataGuard Solutions', { continued: false });
+  doc.fontSize(10).fillColor('#666').text('Secure phone validation platform');
+  doc.moveDown(1.5);
+  doc.fillColor('#000').fontSize(16).text('Invoice');
+  doc.moveDown(0.5).fontSize(10);
+  doc.text(`Invoice no:   ${inv.number}`);
+  doc.text(`Date:         ${new Date(inv.created_at).toLocaleString()}`);
+  doc.text(`Customer:     ${inv.customer_id}`);
+  doc.text(`Status:       ${inv.status.toUpperCase()}`);
+  doc.moveDown(1);
+  doc.fontSize(11).text('Description', 50, doc.y, { width: 320, continued: true }).text('Amount', { align: 'right' });
+  doc.moveTo(50, doc.y + 4).lineTo(545, doc.y + 4).strokeColor('#ccc').stroke();
+  doc.moveDown(0.6);
+  doc.text(`${inv.credits.toLocaleString()} prepaid credits${inv.coin ? ` (paid in ${inv.coin})` : ''}`, 50, doc.y, { width: 320, continued: true })
+     .text(`$${inv.amount_usd.toFixed(2)}`, { align: 'right' });
+  doc.moveDown(1);
+  doc.fontSize(13).text('Total', 50, doc.y, { width: 320, continued: true }).text(`$${inv.amount_usd.toFixed(2)}`, { align: 'right' });
+  doc.moveDown(3);
+  doc.fontSize(8).fillColor('#999').text('© 2026 DataGuard Solutions. All rights reserved. Developed by Steven | Innovation & Security Solutions.', { align: 'center' });
+  doc.end();
+});
+
 // GET /api/history — recent validation jobs for the customer
 app.get('/api/history', async (_req, res) => res.json(await listJobs(CUSTOMER)));
 
@@ -379,7 +450,7 @@ app.post('/api/jobs', async (req, res) => {
   if (!p.success) return res.status(400).json({ error: p.error.flatten() });
   const { numbers, defaultCountry, service, priority } = p.data;
   const jobType = service === 'detection' ? 'detection' : 'validation';
-  const cost = creditsFor(numbers.length, service);
+  const cost = await priceFor(service, numbers.length, { country: defaultCountry, customerId: CUSTOMER });
   try {
     await deduct(CUSTOMER, cost, `job:${jobType}`);
   } catch (e) {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, type Coin, type Payment } from '../lib/api';
+import { api, type Coin, type Payment, type Invoice } from '../lib/api';
 import { PageHeader, Card, Segmented, Badge } from '../components/ui';
 
 const COINS: { value: Coin; label: string }[] = [
@@ -16,11 +16,12 @@ export default function Recharge() {
   const [busy, setBusy] = useState(false);
   const [pay, setPay] = useState<Payment | null>(null);
   const [history, setHistory] = useState<Payment[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadHistory = () => api.payments.list().then(setHistory).catch(() => {});
+  const loadHistory = () => { api.payments.list().then(setHistory).catch(() => {}); api.invoices.list().then(setInvoices).catch(() => {}); };
   const stop = () => { if (poll.current) { clearInterval(poll.current); poll.current = null; } };
   useEffect(() => { loadHistory(); return stop; }, []);
 
@@ -132,6 +133,32 @@ export default function Recharge() {
                 </tr>
               ))}
               {history.length === 0 && <tr><td colSpan={6} className="hint" style={{ textAlign: 'center', padding: 24 }}>No payments yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div style={{ height: 14 }} />
+      <Card title="Invoices" pad={false} className="card-pad-0">
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Invoice</th><th>Date</th><th>Amount</th><th>Credits</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {invoices.map((inv) => (
+                <tr key={inv.id}>
+                  <td className="mono">{inv.number}</td>
+                  <td className="muted" style={{ whiteSpace: 'nowrap' }}>{new Date(inv.created_at).toLocaleDateString()}</td>
+                  <td>${inv.amount_usd.toFixed(2)}</td>
+                  <td>{inv.credits.toLocaleString()}</td>
+                  <td><Badge tone="ok">{inv.status}</Badge></td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button className="btn sm" onClick={() => api.invoices.download(inv.id, inv.number)}>
+                      <i className="ti ti-download" aria-hidden="true" /> PDF
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {invoices.length === 0 && <tr><td colSpan={6} className="hint" style={{ textAlign: 'center', padding: 24 }}>No invoices yet — complete a recharge to generate one.</td></tr>}
             </tbody>
           </table>
         </div>
