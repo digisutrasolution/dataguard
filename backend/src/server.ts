@@ -44,7 +44,13 @@ import { createPayment, getPayment, listPayments, completePayment } from './modu
 import { COINS } from './modules/payments/provider.js';
 import { reqMeta } from './common/meta.js';
 import { createKey, listKeys, revokeKey, resolveKey, logRequest, listLogs } from './modules/apikeys/apikeys.js';
+import { sendExport, type ExportFormat } from './modules/exports/exporter.js';
 import { initDb, dbActive } from './db/pool.js';
+
+const fmt = (req: express.Request): ExportFormat => {
+  const f = String(req.query.format ?? 'csv').toLowerCase();
+  return f === 'xlsx' || f === 'pdf' ? f : 'csv';
+};
 
 const app = express();
 app.set('trust proxy', 1); // behind a proxy/LB — needed for correct req.ip
@@ -455,6 +461,59 @@ app.get('/api/invoices/:id/pdf', async (req, res) => {
 
 // GET /api/history — recent validation jobs for the customer
 app.get('/api/history', async (_req, res) => res.json(await listJobs(CUSTOMER)));
+
+// ---- Report exports (CSV / XLSX / PDF) -----------------------------------
+// Dedicated /export/* paths so they don't collide with :id routes.
+app.get('/api/export/history', async (req, res) => {
+  const rows = await listJobs(cust(req), 10000);
+  await sendExport(res, fmt(req), {
+    filename: 'validation-jobs', title: 'Validation jobs',
+    columns: [
+      { key: 'created_at', header: 'Date', width: 22 }, { key: 'job_type', header: 'Type' },
+      { key: 'service', header: 'Service' }, { key: 'country', header: 'Country' },
+      { key: 'total_records', header: 'Total' }, { key: 'valid_count', header: 'Valid' },
+      { key: 'invalid_count', header: 'Invalid' }, { key: 'dup_count', header: 'Duplicate' },
+      { key: 'credits_used', header: 'Credits' }, { key: 'status', header: 'Status' },
+    ],
+    rows: rows as any[],
+  });
+});
+app.get('/api/export/invoices', async (req, res) => {
+  const rows = await listInvoices(cust(req), 10000);
+  await sendExport(res, fmt(req), {
+    filename: 'invoices', title: 'Invoices',
+    columns: [
+      { key: 'number', header: 'Invoice', width: 24 }, { key: 'created_at', header: 'Date', width: 22 },
+      { key: 'coin', header: 'Coin' }, { key: 'amount_usd', header: 'Amount USD' },
+      { key: 'credits', header: 'Credits' }, { key: 'status', header: 'Status' },
+    ],
+    rows: rows as any[],
+  });
+});
+app.get('/api/admin/export/customers', ...canReport, async (req, res) => {
+  const rows = await adminCustomers();
+  await sendExport(res, fmt(req), {
+    filename: 'customers', title: 'Customers',
+    columns: [
+      { key: 'company', header: 'Company', width: 24 }, { key: 'balance', header: 'Balance' },
+      { key: 'numbers', header: 'Numbers' }, { key: 'spent', header: 'Credits spent' },
+      { key: 'jobs', header: 'Jobs' }, { key: 'lastActivity', header: 'Last activity', width: 22 },
+    ],
+    rows: rows as any[],
+  });
+});
+app.get('/api/admin/export/audit', ...canReport, async (req, res) => {
+  const rows = await listAudit(10000);
+  await sendExport(res, fmt(req), {
+    filename: 'audit-log', title: 'Activity & audit log',
+    columns: [
+      { key: 'created_at', header: 'Time', width: 22 }, { key: 'actor', header: 'Actor', width: 22 },
+      { key: 'action', header: 'Action' }, { key: 'target', header: 'Target' },
+      { key: 'ip', header: 'IP' }, { key: 'device', header: 'Device', width: 26 },
+    ],
+    rows: rows as any[],
+  });
+});
 
 // GET /api/my/stats — customer dashboard aggregates (this month)
 app.get('/api/my/stats', async (_req, res) => res.json(await customerStats(CUSTOMER)));

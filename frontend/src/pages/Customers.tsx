@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type CustomerRow } from '../lib/api';
-import { PageHeader, Card } from '../components/ui';
+import { PageHeader, Card, ExportButtons } from '../components/ui';
 
 const fmt = (n: number) => n.toLocaleString();
 
@@ -18,10 +18,13 @@ export default function Customers() {
     <>
       <PageHeader title="Customers" sub={rows.length ? `${rows.length} accounts` : 'Loading…'}
         actions={
-          <div className="search">
-            <i className="ti ti-search" aria-hidden="true" />
-            <input placeholder="Search customers…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search customers" />
-          </div>
+          <>
+            <div className="search">
+              <i className="ti ti-search" aria-hidden="true" />
+              <input placeholder="Search customers…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search customers" />
+            </div>
+            <ExportButtons path="/admin/export/customers" name="customers" />
+          </>
         } />
       {err && <div className="pill bad" style={{ marginBottom: 16 }}>{err} — sign in as admin</div>}
       <Card pad={false} className="card-pad-0">

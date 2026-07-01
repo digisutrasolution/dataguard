@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type AuditRow } from '../lib/api';
-import { PageHeader, Card, Badge } from '../components/ui';
+import { PageHeader, Card, Badge, ExportButtons } from '../components/ui';
 
 const tone = (action: string): 'ok' | 'bad' | 'warn' | 'run' | 'muted' => {
   if (action.includes('failed') || action.includes('delete')) return 'bad';
@@ -17,7 +17,8 @@ export default function Audit() {
 
   return (
     <>
-      <PageHeader title="Activity &amp; audit log" sub={rows.length ? `${rows.length} recent events` : 'Loading…'} />
+      <PageHeader title="Activity &amp; audit log" sub={rows.length ? `${rows.length} recent events` : 'Loading…'}
+        actions={<ExportButtons path="/admin/export/audit" name="audit-log" />} />
       {err && <div className="pill bad" style={{ marginBottom: 16 }}>{err} — sign in as admin</div>}
       <Card pad={false} className="card-pad-0">
         <div className="table-wrap">

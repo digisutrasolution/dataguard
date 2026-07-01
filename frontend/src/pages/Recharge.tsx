@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type Coin, type Payment, type Invoice } from '../lib/api';
-import { PageHeader, Card, Segmented, Badge } from '../components/ui';
+import { PageHeader, Card, Segmented, Badge, ExportButtons } from '../components/ui';
 
 const COINS: { value: Coin; label: string }[] = [
   { value: 'USDT', label: 'USDT' }, { value: 'BTC', label: 'BTC' },
@@ -139,7 +139,7 @@ export default function Recharge() {
       </Card>
 
       <div style={{ height: 14 }} />
-      <Card title="Invoices" pad={false} className="card-pad-0">
+      <Card title="Invoices" action={<ExportButtons path="/export/invoices" name="invoices" />} pad={false} className="card-pad-0">
         <div className="table-wrap">
           <table>
             <thead><tr><th>Invoice</th><th>Date</th><th>Amount</th><th>Credits</th><th>Status</th><th></th></tr></thead>

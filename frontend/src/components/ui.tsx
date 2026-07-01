@@ -1,5 +1,20 @@
 // Reusable presentation components for the Aurora design system.
 import type { ReactNode } from 'react';
+import { api } from '../lib/api';
+
+// CSV / XLSX / PDF export buttons for a report endpoint.
+export function ExportButtons({ path, name }: { path: string; name: string }) {
+  const fmts: ('csv' | 'xlsx' | 'pdf')[] = ['csv', 'xlsx', 'pdf'];
+  return (
+    <div className="row" style={{ gap: 6 }}>
+      {fmts.map((f) => (
+        <button key={f} className="btn sm" onClick={() => api.exportReport(path, name, f)}>
+          <i className="ti ti-download" aria-hidden="true" /> {f.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function PageHeader({ title, sub, actions }: { title: string; sub?: string; actions?: ReactNode }) {
   return (

@@ -41,6 +41,18 @@ async function del<T>(path: string): Promise<T> {
   return res.json();
 }
 
+// Fetch a file (with auth headers) and trigger a browser download.
+export async function downloadBlob(path: string, filename: string): Promise<void> {
+  const res = await fetch(base + path, { headers: headers(false) });
+  if (!res.ok) throw new Error('download_failed');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export interface ValidationResult {
   raw: string;
   e164: string | null;
@@ -272,17 +284,12 @@ export const api = {
 
   invoices: {
     list: () => get<Invoice[]>('/invoices'),
-    download: async (id: string, number: string) => {
-      const res = await fetch(`${base}/invoices/${id}/pdf`, { headers: headers(false) });
-      if (!res.ok) throw new Error('download_failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `${number}.pdf`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-    },
+    download: (id: string, number: string) => downloadBlob(`/invoices/${id}/pdf`, `${number}.pdf`),
   },
+
+  // Report exports: path is the /export/... route, format appended.
+  exportReport: (path: string, name: string, format: 'csv' | 'xlsx' | 'pdf') =>
+    downloadBlob(`${path}?format=${format}`, `${name}.${format}`),
 
   auth: {
     login: (email: string, password: string, totp?: string) =>

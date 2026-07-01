@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type JobRow, type MyStats } from '../lib/api';
-import { PageHeader, Card, StatCard, Badge, compact, money } from '../components/ui';
+import { PageHeader, Card, StatCard, Badge, ExportButtons, compact, money } from '../components/ui';
 
 const num = (v: number | string) => Number(v);
 
@@ -34,7 +34,7 @@ export default function CustomerDashboard() {
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)' }}>
-        <Card title="Recent jobs" action={<a className="hint" href="/validate">View all</a>}>
+        <Card title="Recent jobs" action={<ExportButtons path="/export/history" name="validation-jobs" />}>
           {jobs.length === 0 && <p className="hint">No jobs yet — run one from Validate.</p>}
           {jobs.map((j) => {
             const total = num(j.total_records);

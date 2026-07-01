@@ -16,6 +16,7 @@ dataguard/
 | Area | Status |
 |---|---|
 | API platform — hashed keys, per-key auth + rate limits, request logs, docs | ✅ working |
+| Report exports — CSV / Excel / PDF (history, invoices, customers, audit) | ✅ working |
 | Async jobs — queue + workers, chunked, live progress, priority (BullMQ/Redis or in-memory) | ✅ working |
 | Crypto payments — pluggable gateway, payment lifecycle, auto wallet credit | ✅ working (mock; NOWPayments-ready) |
 | Pricing — DB-driven rules (service/country/customer + bulk tiers), admin-managed | ✅ working |
@@ -85,6 +86,17 @@ CREATE DATABASE dataguard OWNER dataguard;
 Then set `DATABASE_URL=postgresql://dataguard:your-password@localhost:5432/dataguard`
 in `backend/.env` and run `npm run migrate`. Verified: wallet balance + job history
 survive a server restart (durable).
+
+## Report exports
+
+Any listed report exports to CSV, Excel (.xlsx), or PDF via a shared exporter
+([exporter.ts](backend/src/modules/exports/exporter.ts)). Export buttons appear on
+the relevant pages.
+
+- Customer: `GET /api/export/history`, `/api/export/invoices`
+- Admin: `GET /api/admin/export/customers`, `/api/admin/export/audit`
+- Add `?format=csv|xlsx|pdf`. Paths are separate from `:id` routes to avoid
+  collisions; admin exports require the `reports.view` permission.
 
 ## API platform (keys)
 
