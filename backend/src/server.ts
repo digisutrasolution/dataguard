@@ -36,10 +36,11 @@ import {
   disable2fa,
 } from './modules/auth/service.js';
 import { requireAuth, requirePermission } from './modules/auth/middleware.js';
+import { createUser, listByCustomer, getMember, updateMember } from './modules/auth/users.js';
 import { recordJob, listJobs, createJob, getJob } from './modules/jobs/jobs.js';
 import { initQueue, enqueue, queueMode } from './queue/queue.js';
 import { adminStats, adminCustomers, customerStats } from './modules/reports/stats.js';
-import { logAudit, listAudit } from './modules/audit/audit.js';
+import { logAudit, listAudit, listAuditByActor } from './modules/audit/audit.js';
 import { createPayment, getPayment, listPayments, completePayment } from './modules/payments/payments.js';
 import { COINS } from './modules/payments/provider.js';
 import { reqMeta } from './common/meta.js';
@@ -83,7 +84,8 @@ app.use('/api', async (req, res, next) => {
     req.path === '/health' ||
     req.path === '/payments/webhook' ||
     req.path.startsWith('/auth') ||
-    req.path.startsWith('/admin')
+    req.path.startsWith('/admin') ||
+    req.path.startsWith('/team') // JWT-authenticated (customer owner)
   ) {
     return next();
   }
@@ -534,6 +536,46 @@ app.delete('/api/keys/:id', async (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/logs', async (req, res) => res.json(await listLogs(cust(req), 100)));
+
+// ---- Team users (customer owner manages sub-users) -----------------------
+const canTeam = [requireAuth, requirePermission('users.manage')];
+const teamCreateSchema = z.object({
+  email: z.string().email(), password: z.string().min(6),
+  role: z.enum(['customer_owner', 'customer_member']).default('customer_member'),
+});
+app.get('/api/team', ...canTeam, async (req, res) => {
+  const cid = req.user!.customerId;
+  res.json(cid ? await listByCustomer(cid) : []);
+});
+app.post('/api/team', ...canTeam, async (req, res) => {
+  const cid = req.user!.customerId;
+  if (!cid) return res.status(400).json({ error: 'not_a_customer_account' });
+  const p = teamCreateSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.flatten() });
+  try {
+    const u = await createUser({ email: p.data.email, password: p.data.password, role: p.data.role, customerId: cid });
+    void logAudit({ actor: req.user!.email, customerId: cid, action: 'team.create', target: p.data.email, ...reqMeta(req) });
+    res.status(201).json({ id: u.id, email: u.email, role: u.role, isActive: u.isActive });
+  } catch { res.status(409).json({ error: 'email_taken' }); }
+});
+app.patch('/api/team/:id', ...canTeam, async (req, res) => {
+  const cid = req.user!.customerId;
+  if (!cid) return res.status(400).json({ error: 'not_a_customer_account' });
+  if (req.params.id === req.user!.sub) return res.status(400).json({ error: 'cannot_modify_self' });
+  const patch = z.object({ role: z.enum(['customer_owner', 'customer_member']).optional(), isActive: z.boolean().optional() }).safeParse(req.body);
+  if (!patch.success) return res.status(400).json({ error: patch.error.flatten() });
+  const m = await updateMember(req.params.id, cid, patch.data);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ actor: req.user!.email, customerId: cid, action: 'team.update', target: m.email, ...reqMeta(req) });
+  res.json(m);
+});
+app.get('/api/team/:id/activity', ...canTeam, async (req, res) => {
+  const cid = req.user!.customerId;
+  if (!cid) return res.json([]);
+  const m = await getMember(req.params.id, cid);
+  if (!m) return res.status(404).json({ error: 'not_found' });
+  res.json(await listAuditByActor(m.email, 30));
+});
 
 // ---- Async jobs (queue + workers) ----------------------------------------
 // POST /api/jobs — submit a validation OR detection job; processed in the

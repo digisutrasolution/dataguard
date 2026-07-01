@@ -31,6 +31,16 @@ export async function logAudit(e: AuditEntry): Promise<void> {
   }
 }
 
+export async function listAuditByActor(actor: string, limit = 30) {
+  if (dbActive()) {
+    const { rows } = await q(
+      `SELECT id, actor, customer_id, action, target, ip, device, created_at
+       FROM audit_logs WHERE actor = $1 ORDER BY created_at DESC LIMIT $2`, [actor, limit]);
+    return rows;
+  }
+  return mem.filter((l) => l.actor === actor).slice(0, limit);
+}
+
 export async function listAudit(limit = 50) {
   if (dbActive()) {
     const { rows } = await q(

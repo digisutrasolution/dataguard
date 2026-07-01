@@ -178,6 +178,16 @@ export interface AuditRow {
   created_at: string;
 }
 
+export interface TeamMember {
+  id: string;
+  email: string;
+  role: string;
+  twofaEnabled?: boolean;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
 export interface ApiKey {
   id: string;
   label: string | null;
@@ -273,6 +283,13 @@ export const api = {
         patch<PricingRule>(`/admin/pricing/${id}`, body),
       remove: (id: string) => del<{ ok: boolean }>(`/admin/pricing/${id}`),
     },
+  },
+
+  team: {
+    list: () => get<TeamMember[]>('/team'),
+    create: (email: string, password: string, role: string) => post<TeamMember>('/team', { email, password, role }),
+    update: (id: string, body: { role?: string; isActive?: boolean }) => patch<TeamMember>(`/team/${id}`, body),
+    activity: (id: string) => get<AuditRow[]>(`/team/${id}/activity`),
   },
 
   apiKeys: {

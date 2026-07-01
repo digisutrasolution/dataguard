@@ -5,6 +5,7 @@ import {
   createUser,
   findByEmail,
   setTotp,
+  setLastLogin,
   verifyPassword,
   type User,
 } from './users.js';
@@ -43,7 +44,8 @@ export type LoginResult =
 
 export async function login(email: string, password: string, totp?: string): Promise<LoginResult> {
   const user = await findByEmail(email);
-  if (!user || !verifyPassword(user, password)) return { ok: false, reason: 'invalid_credentials' };
+  // Deactivated accounts can't sign in (don't reveal which reason).
+  if (!user || !user.isActive || !verifyPassword(user, password)) return { ok: false, reason: 'invalid_credentials' };
 
   if (user.twofaEnabled && user.totpSecret) {
     if (!totp) return { ok: false, reason: 'twofa_required' };
@@ -51,6 +53,7 @@ export async function login(email: string, password: string, totp?: string): Pro
       return { ok: false, reason: 'twofa_invalid' };
   }
 
+  await setLastLogin(user.email);
   const token = signToken({ sub: user.id, email: user.email, role: user.role, customerId: user.customerId });
   return { ok: true, token, user: toPublic(user) };
 }

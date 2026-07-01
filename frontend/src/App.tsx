@@ -6,6 +6,7 @@ import Validate from './pages/Validate';
 import Recharge from './pages/Recharge';
 import ApiKeys from './pages/ApiKeys';
 import ApiDocs from './pages/ApiDocs';
+import Team from './pages/Team';
 import Providers from './pages/Providers';
 import Customers from './pages/Customers';
 import Pricing from './pages/Pricing';
@@ -20,6 +21,7 @@ const NAV = {
     { to: '/recharge', icon: 'wallet', label: 'Recharge' },
     { to: '/api-keys', icon: 'key', label: 'API keys' },
     { to: '/api-docs', icon: 'book', label: 'API docs' },
+    { to: '/team', icon: 'users-group', label: 'Team' },
   ],
   admin: [
     { to: '/admin', icon: 'chart-bar', label: 'Overview' },
@@ -105,6 +107,7 @@ export default function App() {
           <Route path="/recharge" element={<Recharge />} />
           <Route path="/api-keys" element={<ApiKeys />} />
           <Route path="/api-docs" element={<ApiDocs />} />
+          <Route path="/team" element={<Protected><Team /></Protected>} />
             <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
             <Route path="/admin/customers" element={<Protected><Customers /></Protected>} />
           <Route path="/admin/pricing" element={<Protected><Pricing /></Protected>} />

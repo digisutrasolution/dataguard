@@ -23,6 +23,7 @@ dataguard/
 | Invoices — auto-generated on payment, PDF download | ✅ working |
 | Persistence — PostgreSQL (users, wallets, transactions ledger, providers, jobs) | ✅ working, durable |
 | Auth — JWT login/register, bcrypt, TOTP 2FA, RBAC roles/permissions | ✅ working |
+| Team users — customer sub-users, roles, deactivate, activity tracking | ✅ working |
 | Validation engine (single + bulk, E.164, dedupe, type) | ✅ working |
 | Number Detection (registered/unregistered/unknown) — multi-provider (Apify/HTTP/mock), admin-managed | ✅ working |
 | Country-based generator (national / international / E.164) | ✅ working |
@@ -157,6 +158,17 @@ request. Submit returns a job id immediately; the UI polls for live progress.
 
 `GET /api/health` reports `queue: redis | memory`. To enable Redis locally: install
 Memurai (Windows) or run Redis via WSL/Docker, then set `REDIS_URL=redis://localhost:6379`.
+
+## Team users
+
+A customer owner (permission `users.manage`) manages sub-users under their
+account at `/team`:
+- `GET/POST /api/team`, `PATCH /api/team/:id`, `GET /api/team/:id/activity`
+  (JWT; exempt from the API-key gate).
+- Roles: `customer_owner` (full) / `customer_member` (run + view). Members can't
+  manage the team.
+- Deactivated users can't sign in; `last_login_at` is tracked, and each member's
+  audit activity is viewable. Migration `007_team.sql`.
 
 ## Auth — JWT + 2FA + RBAC
 
