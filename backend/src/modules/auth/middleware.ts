@@ -7,6 +7,9 @@ declare global {
   namespace Express {
     interface Request {
       user?: TokenPayload;
+      customerId?: string;     // resolved from the API key (data routes)
+      apiKeyId?: string;
+      apiKeyRateLimit?: number;
     }
   }
 }

@@ -43,6 +43,7 @@ import { logAudit, listAudit } from './modules/audit/audit.js';
 import { createPayment, getPayment, listPayments, completePayment } from './modules/payments/payments.js';
 import { COINS } from './modules/payments/provider.js';
 import { reqMeta } from './common/meta.js';
+import { createKey, listKeys, revokeKey, resolveKey, logRequest, listLogs } from './modules/apikeys/apikeys.js';
 import { initDb, dbActive } from './db/pool.js';
 
 const app = express();
@@ -51,7 +52,9 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 const PORT = Number(process.env.PORT ?? 4000);
-const CUSTOMER = 'demo-customer'; // resolved from API key in production
+const CUSTOMER = 'demo-customer'; // portal/demo default
+// Customer for the request: from the resolved API key, else the demo customer.
+const cust = (req: express.Request) => req.customerId ?? CUSTOMER;
 
 // --- Rate limiting ---
 // In-memory store (per-process). Swap for a Redis store for multi-instance.
@@ -65,24 +68,44 @@ const authLimiter = rateLimit({
 });
 app.use('/api', apiLimiter);
 
-// --- API-key gate (demo) for the programmatic data API ---
+// --- API-key gate for the programmatic data API ---
 // Portal/admin routes (/auth, /admin) use JWT instead and are exempt here.
-app.use('/api', (req, res, next) => {
+// Accepts the configured demo key (-> demo customer) OR a real hashed key from
+// the api_keys table (-> its customer); real-key requests are logged.
+app.use('/api', async (req, res, next) => {
   if (
     req.path === '/health' ||
-    req.path === '/payments/webhook' || // external provider IPN — verify signature instead
+    req.path === '/payments/webhook' ||
     req.path.startsWith('/auth') ||
     req.path.startsWith('/admin')
   ) {
     return next();
   }
-  // Demo key; in prod hash-compare against api_keys.key_hash + rate limit.
   const key = req.header('x-api-key');
-  if (!key || key !== (process.env.API_KEY ?? 'demo-key')) {
-    return res.status(401).json({ error: 'invalid_api_key' });
+  if (!key) return res.status(401).json({ error: 'invalid_api_key' });
+
+  if (key === (process.env.API_KEY ?? 'demo-key')) {
+    req.customerId = CUSTOMER; req.apiKeyId = 'demo';
+    return next();
   }
+  const resolved = await resolveKey(key);
+  if (!resolved) return res.status(401).json({ error: 'invalid_api_key' });
+  req.customerId = resolved.customerId;
+  req.apiKeyId = resolved.id;
+  req.apiKeyRateLimit = resolved.rateLimit;
+  res.on('finish', () => void logRequest({ keyId: resolved.id, customerId: resolved.customerId, method: req.method, path: req.path, status: res.statusCode }));
   next();
 });
+
+// Per-key rate limit (real keys only; demo/portal uses the global limiter above).
+const keyLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: (req) => req.apiKeyRateLimit ?? 1000,
+  keyGenerator: (req) => req.apiKeyId ?? req.ip ?? 'anon',
+  skip: (req) => !req.apiKeyId || req.apiKeyId === 'demo',
+  standardHeaders: true, legacyHeaders: false, message: { error: 'rate_limited' },
+});
+app.use('/api', keyLimiter);
 
 app.get('/api/health', (_req, res) =>
   res.json({ status: 'ok', service: 'DataGuard API', store: dbActive() ? 'postgres' : 'memory', queue: queueMode(), ts: Date.now() }),
@@ -435,6 +458,23 @@ app.get('/api/history', async (_req, res) => res.json(await listJobs(CUSTOMER)))
 
 // GET /api/my/stats — customer dashboard aggregates (this month)
 app.get('/api/my/stats', async (_req, res) => res.json(await customerStats(CUSTOMER)));
+
+// ---- API keys (customer-managed) -----------------------------------------
+const keySchema = z.object({ label: z.string().min(1).max(60), rateLimit: z.number().int().min(60).max(100000).default(1000) });
+app.post('/api/keys', async (req, res) => {
+  const p = keySchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.flatten() });
+  const out = await createKey(cust(req), p.data.label, p.data.rateLimit);
+  void logAudit({ customerId: cust(req), action: 'apikey.create', target: p.data.label, ...reqMeta(req) });
+  res.status(201).json({ ...out.view, key: out.plaintext }); // plaintext shown ONCE
+});
+app.get('/api/keys', async (req, res) => res.json(await listKeys(cust(req))));
+app.delete('/api/keys/:id', async (req, res) => {
+  if (!(await revokeKey(req.params.id, cust(req)))) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ customerId: cust(req), action: 'apikey.revoke', target: req.params.id, ...reqMeta(req) });
+  res.json({ ok: true });
+});
+app.get('/api/logs', async (req, res) => res.json(await listLogs(cust(req), 100)));
 
 // ---- Async jobs (queue + workers) ----------------------------------------
 // POST /api/jobs — submit a validation OR detection job; processed in the

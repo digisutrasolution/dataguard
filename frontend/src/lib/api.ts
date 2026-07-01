@@ -166,6 +166,18 @@ export interface AuditRow {
   created_at: string;
 }
 
+export interface ApiKey {
+  id: string;
+  label: string | null;
+  key_prefix: string;
+  rate_limit: number;
+  is_active: boolean;
+  last_used_at: string | null;
+  request_count: number;
+  created_at: string;
+}
+export interface ApiLog { id: number; method: string; path: string; status: number; created_at: string }
+
 export interface PricingRule {
   id: string;
   service: string;
@@ -249,6 +261,13 @@ export const api = {
         patch<PricingRule>(`/admin/pricing/${id}`, body),
       remove: (id: string) => del<{ ok: boolean }>(`/admin/pricing/${id}`),
     },
+  },
+
+  apiKeys: {
+    list: () => get<ApiKey[]>('/keys'),
+    create: (label: string, rateLimit: number) => post<ApiKey & { key: string }>('/keys', { label, rateLimit }),
+    revoke: (id: string) => del<{ ok: boolean }>(`/keys/${id}`),
+    logs: () => get<ApiLog[]>('/logs'),
   },
 
   invoices: {

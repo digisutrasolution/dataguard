@@ -15,6 +15,7 @@ dataguard/
 
 | Area | Status |
 |---|---|
+| API platform — hashed keys, per-key auth + rate limits, request logs, docs | ✅ working |
 | Async jobs — queue + workers, chunked, live progress, priority (BullMQ/Redis or in-memory) | ✅ working |
 | Crypto payments — pluggable gateway, payment lifecycle, auto wallet credit | ✅ working (mock; NOWPayments-ready) |
 | Pricing — DB-driven rules (service/country/customer + bulk tiers), admin-managed | ✅ working |
@@ -84,6 +85,19 @@ CREATE DATABASE dataguard OWNER dataguard;
 Then set `DATABASE_URL=postgresql://dataguard:your-password@localhost:5432/dataguard`
 in `backend/.env` and run `npm run migrate`. Verified: wallet balance + job history
 survive a server restart (durable).
+
+## API platform (keys)
+
+Customers manage API keys in the portal (`/api-keys`); docs at `/api-docs`. Keys
+are shown in plaintext once, then only a SHA-256 hash is stored.
+
+- Auth: `x-api-key` header. The gate accepts the demo key (→ demo customer) or a
+  real hashed key from `api_keys` (→ its customer); real-key requests are logged
+  to `api_logs`.
+- Per-key rate limiting (configurable `rate_limit`, req/min); usage counter +
+  `last_used_at` tracked.
+- Endpoints: `POST/GET /api/keys`, `DELETE /api/keys/:id`, `GET /api/logs`.
+- Migration `006_apikeys.sql`.
 
 ## Pricing & invoices
 
