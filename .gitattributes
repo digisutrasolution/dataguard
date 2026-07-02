@@ -1,0 +1,5 @@
+# Keep LF for files that run on Linux, regardless of the committer's OS.
+*.sh        text eol=lf
+Dockerfile* text eol=lf
+Caddyfile   text eol=lf
+*.yml       text eol=lf
