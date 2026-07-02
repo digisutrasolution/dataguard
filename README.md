@@ -24,6 +24,7 @@ dataguard/
 | Persistence — PostgreSQL (users, wallets, transactions ledger, providers, jobs) | ✅ working, durable |
 | Auth — JWT login/register, bcrypt, TOTP 2FA, RBAC roles/permissions | ✅ working |
 | Team users — customer sub-users, roles, deactivate, activity tracking | ✅ working |
+| Resellers — assigned customers, commission tracking, admin-managed | ✅ working |
 | Validation engine (single + bulk, E.164, dedupe, type) | ✅ working |
 | Number Detection (registered/unregistered/unknown) — multi-provider (Apify/HTTP/mock), admin-managed | ✅ working |
 | Country-based generator (national / international / E.164) | ✅ working |
@@ -158,6 +159,19 @@ request. Submit returns a job id immediately; the UI polls for live progress.
 
 `GET /api/health` reports `queue: redis | memory`. To enable Redis locally: install
 Memurai (Windows) or run Redis via WSL/Docker, then set `REDIS_URL=redis://localhost:6379`.
+
+## Resellers & commissions
+
+Admin-managed resellers (`/admin/resellers`, migration `008_resellers.sql`). Each
+customer can be assigned to a reseller (`customers.reseller_id`); the reseller
+earns `commission_rate × credits_spent × $0.0025` on their customers' usage.
+
+- `GET/POST /api/admin/resellers`, `PATCH/DELETE /api/admin/resellers/:id`
+- `GET /api/admin/resellers/:id/customers` (per-customer commission)
+- `POST /api/admin/resellers/:id/assign` · `POST /api/admin/resellers/unassign`
+- Custom pricing per customer is handled via `pricing_rules` (customer scope).
+- A dedicated reseller login/portal can be layered on later; today it's managed
+  from the admin panel.
 
 ## Team users
 

@@ -46,6 +46,7 @@ import { COINS } from './modules/payments/provider.js';
 import { reqMeta } from './common/meta.js';
 import { createKey, listKeys, revokeKey, resolveKey, logRequest, listLogs } from './modules/apikeys/apikeys.js';
 import { sendExport, type ExportFormat } from './modules/exports/exporter.js';
+import { listResellers, createReseller, updateReseller, deleteReseller, resellerCustomers, customersWithReseller, assignCustomer } from './modules/resellers/resellers.js';
 import { initDb, dbActive } from './db/pool.js';
 
 const fmt = (req: express.Request): ExportFormat => {
@@ -318,6 +319,45 @@ app.patch('/api/admin/pricing/:id', ...canAdmin, async (req, res) => {
 app.delete('/api/admin/pricing/:id', ...canAdmin, async (req, res) => {
   if (!(await deleteRule(req.params.id))) return res.status(404).json({ error: 'not_found' });
   void logAudit({ actor: req.user!.email, action: 'pricing.delete', target: req.params.id, ...reqMeta(req) });
+  res.json({ ok: true });
+});
+
+// ---- Admin: resellers + commissions --------------------------------------
+app.get('/api/admin/resellers', ...canAdmin, async (_req, res) => res.json(await listResellers()));
+app.get('/api/admin/reseller-customers', ...canAdmin, async (_req, res) => res.json(await customersWithReseller()));
+const resellerSchema = z.object({ name: z.string().min(1), email: z.string().email().optional(), commissionRate: z.number().min(0).max(1).default(0.2) });
+app.post('/api/admin/resellers', ...canAdmin, async (req, res) => {
+  const p = resellerSchema.safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.flatten() });
+  const r = await createReseller(p.data.name, p.data.email ?? null, p.data.commissionRate);
+  void logAudit({ actor: req.user!.email, action: 'reseller.create', target: p.data.name, ...reqMeta(req) });
+  res.status(201).json(r);
+});
+app.patch('/api/admin/resellers/:id', ...canAdmin, async (req, res) => {
+  const rate = Number(req.body?.commissionRate);
+  if (!(rate >= 0 && rate <= 1)) return res.status(400).json({ error: 'bad_rate' });
+  const r = await updateReseller(req.params.id, rate);
+  if (!r) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ actor: req.user!.email, action: 'reseller.update', target: req.params.id, ...reqMeta(req) });
+  res.json({ ok: true });
+});
+app.delete('/api/admin/resellers/:id', ...canAdmin, async (req, res) => {
+  if (!(await deleteReseller(req.params.id))) return res.status(404).json({ error: 'not_found' });
+  void logAudit({ actor: req.user!.email, action: 'reseller.delete', target: req.params.id, ...reqMeta(req) });
+  res.json({ ok: true });
+});
+app.get('/api/admin/resellers/:id/customers', ...canAdmin, async (req, res) => res.json(await resellerCustomers(req.params.id)));
+app.post('/api/admin/resellers/:id/assign', ...canAdmin, async (req, res) => {
+  const customerId = String(req.body?.customerId ?? '');
+  if (!customerId) return res.status(400).json({ error: 'customerId_required' });
+  await assignCustomer(customerId, req.params.id);
+  void logAudit({ actor: req.user!.email, action: 'reseller.assign', target: `${customerId}->${req.params.id}`, ...reqMeta(req) });
+  res.json({ ok: true });
+});
+app.post('/api/admin/resellers/unassign', ...canAdmin, async (req, res) => {
+  const customerId = String(req.body?.customerId ?? '');
+  if (!customerId) return res.status(400).json({ error: 'customerId_required' });
+  await assignCustomer(customerId, null);
   res.json({ ok: true });
 });
 

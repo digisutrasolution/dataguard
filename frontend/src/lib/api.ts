@@ -178,6 +178,19 @@ export interface AuditRow {
   created_at: string;
 }
 
+export interface Reseller {
+  id: string;
+  name: string;
+  email: string | null;
+  commission_rate: number;
+  customers: number;
+  credits: number;
+  commission_usd: number;
+  created_at: string;
+}
+export interface ResellerCustomer { id: string; company: string; numbers: number; spent: number; commission_usd: number }
+export interface AssignableCustomer { id: string; company: string; reseller_id: string | null }
+
 export interface TeamMember {
   id: string;
   email: string;
@@ -282,6 +295,16 @@ export const api = {
       update: (id: string, body: { creditsPerNumber?: number; minQty?: number; active?: boolean }) =>
         patch<PricingRule>(`/admin/pricing/${id}`, body),
       remove: (id: string) => del<{ ok: boolean }>(`/admin/pricing/${id}`),
+    },
+    resellers: {
+      list: () => get<Reseller[]>('/admin/resellers'),
+      create: (name: string, email: string | undefined, commissionRate: number) => post<Reseller>('/admin/resellers', { name, email, commissionRate }),
+      update: (id: string, commissionRate: number) => patch<{ ok: boolean }>(`/admin/resellers/${id}`, { commissionRate }),
+      remove: (id: string) => del<{ ok: boolean }>(`/admin/resellers/${id}`),
+      customers: (id: string) => get<ResellerCustomer[]>(`/admin/resellers/${id}/customers`),
+      assign: (id: string, customerId: string) => post<{ ok: boolean }>(`/admin/resellers/${id}/assign`, { customerId }),
+      unassign: (customerId: string) => post<{ ok: boolean }>('/admin/resellers/unassign', { customerId }),
+      allCustomers: () => get<AssignableCustomer[]>('/admin/reseller-customers'),
     },
   },
 

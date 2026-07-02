@@ -10,6 +10,7 @@ import Team from './pages/Team';
 import Providers from './pages/Providers';
 import Customers from './pages/Customers';
 import Pricing from './pages/Pricing';
+import Resellers from './pages/Resellers';
 import Audit from './pages/Audit';
 import Login from './pages/Login';
 import { useAuth } from './lib/auth';
@@ -27,6 +28,7 @@ const NAV = {
     { to: '/admin', icon: 'chart-bar', label: 'Overview' },
     { to: '/admin/customers', icon: 'users', label: 'Customers' },
     { to: '/admin/pricing', icon: 'tag', label: 'Pricing' },
+    { to: '/admin/resellers', icon: 'affiliate', label: 'Resellers' },
     { to: '/admin/providers', icon: 'plug-connected', label: 'Providers' },
     { to: '/admin/audit', icon: 'history', label: 'Activity log' },
   ],
@@ -111,6 +113,7 @@ export default function App() {
             <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
             <Route path="/admin/customers" element={<Protected><Customers /></Protected>} />
           <Route path="/admin/pricing" element={<Protected><Pricing /></Protected>} />
+          <Route path="/admin/resellers" element={<Protected><Resellers /></Protected>} />
             <Route path="/admin/providers" element={<Protected><Providers /></Protected>} />
             <Route path="/admin/audit" element={<Protected><Audit /></Protected>} />
           </Routes>
