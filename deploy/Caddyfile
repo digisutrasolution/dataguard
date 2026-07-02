@@ -1,0 +1,18 @@
+# SITE_ADDRESS = your domain (e.g. app.dataguard.io) for automatic HTTPS,
+# or ":80" for local/testing (no TLS).
+{$SITE_ADDRESS::80} {
+	encode gzip zstd
+
+	# API → backend (path preserved: backend serves /api/*)
+	@api path /api/*
+	handle @api {
+		reverse_proxy api:4000
+	}
+
+	# SPA static files with client-side routing fallback
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

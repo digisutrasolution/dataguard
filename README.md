@@ -34,7 +34,18 @@ dataguard/
 | Admin / Customer / Validate UI | ✅ working, live-wired |
 | DB schema (18 tables, partitions) | ✅ DDL ready |
 
-## Run it
+## Deploy (production)
+
+Containerized single-node stack — Caddy (auto-HTTPS) + API + BullMQ worker +
+Postgres + Redis:
+```bash
+cp .env.production.example .env   # set secrets
+docker compose up -d --build
+```
+Full guide (DigitalOcean, managed DB option, backups, monitoring, secret
+rotation): [deploy/DEPLOY.md](deploy/DEPLOY.md). Health check: `GET /api/health`.
+
+## Run it (local dev)
 
 **One command (recommended)** — starts backend + frontend together:
 ```bash

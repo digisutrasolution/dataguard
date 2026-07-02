@@ -110,14 +110,22 @@ app.use('/api', async (req, res, next) => {
 const keyLimiter = rateLimit({
   windowMs: 60_000,
   limit: (req) => req.apiKeyRateLimit ?? 1000,
-  keyGenerator: (req) => req.apiKeyId ?? req.ip ?? 'anon',
+  // Only runs for real keys (see skip), so keying on the key id is safe/correct.
+  keyGenerator: (req) => req.apiKeyId ?? 'none',
   skip: (req) => !req.apiKeyId || req.apiKeyId === 'demo',
   standardHeaders: true, legacyHeaders: false, message: { error: 'rate_limited' },
 });
 app.use('/api', keyLimiter);
 
+const STARTED = Date.now();
 app.get('/api/health', (_req, res) =>
-  res.json({ status: 'ok', service: 'DataGuard API', store: dbActive() ? 'postgres' : 'memory', queue: queueMode(), ts: Date.now() }),
+  res.json({
+    status: 'ok', service: 'DataGuard API',
+    store: dbActive() ? 'postgres' : 'memory', queue: queueMode(),
+    uptimeSec: Math.round((Date.now() - STARTED) / 1000),
+    rssMb: Math.round(process.memoryUsage().rss / 1048576),
+    ts: Date.now(),
+  }),
 );
 
 // ---- Auth (JWT + 2FA) ----------------------------------------------------
